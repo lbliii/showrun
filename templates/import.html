@@ -22,7 +22,7 @@
     <div class="import-copy">
       <p class="eyebrow">New show</p>
       <h1>Import an agent session.</h1>
-      <p>Upload a Codex rollout or Showrun JSONL. Parsing, structural filtering, and smart direction happen before the sanitized draft is stored.</p>
+      <p>Upload a Codex rollout, Showrun JSONL, or portable <code>.dvd.json</code>. Parsing, validation, and smart direction happen before the sanitized draft is stored.</p>
       <ol>
         <li><span>01</span>System instructions and raw tool outputs are excluded.</li>
         <li><span>02</span>Reading time determines the first editorial pace.</li>
@@ -41,8 +41,8 @@
       <label for="title">Optional lesson title</label>
       <input id="title" name="title" maxlength="120" placeholder="Let Showrun derive it">
 
-      <label for="session_file">Session JSONL</label>
-      <input id="session_file" name="session_file" type="file" accept=".jsonl,.json,application/json">
+      <label for="session_file">Session or portable artifact</label>
+      <input id="session_file" name="session_file" type="file" accept=".jsonl,.json,.dvd.json,application/json">
 
       <div class="form-divider"><span>or paste it</span></div>
 

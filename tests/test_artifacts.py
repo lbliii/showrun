@@ -108,6 +108,42 @@ def test_manifest_round_trip_is_stable() -> None:
     assert restored.to_json() == artifact.to_json()
 
 
+def test_portable_artifact_validation_redacts_secrets_and_rejects_bad_timing() -> None:
+    artifact = create_artifact_from_text(CANONICAL)
+    manifest = artifact.to_manifest()
+    manifest["events"][0]["text"] = "token=abcdefghijk12345"
+
+    restored = artifact_from_json(json.dumps(manifest))
+
+    assert restored.events[0].text == "[REDACTED]"
+    assert "Potential credentials were redacted locally." in restored.warnings
+
+    manifest["events"][0]["at"] = "not-a-number"
+    with pytest.raises(ValueError, match="event 1 is invalid"):
+        artifact_from_json(json.dumps(manifest))
+
+
+def test_portable_artifact_requires_sequential_events_and_chapters() -> None:
+    artifact = create_artifact_from_text(CANONICAL)
+    manifest = artifact.to_manifest()
+    manifest["events"][1]["id"] = 9
+    with pytest.raises(ValueError, match="IDs must be sequential"):
+        artifact_from_json(json.dumps(manifest))
+
+    manifest = artifact.to_manifest()
+    manifest["chapters"].append(
+        {
+            "name": "Out of order",
+            "at": -1,
+            "caption": "",
+            "note": "",
+            "teaching_point": "",
+        }
+    )
+    with pytest.raises(ValueError, match="chapter 2 is invalid"):
+        artifact_from_json(json.dumps(manifest))
+
+
 def test_director_reorders_and_rewrites_events_and_chapters() -> None:
     artifact = create_artifact_from_text(CANONICAL)
 

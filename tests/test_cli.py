@@ -11,6 +11,7 @@ from urllib.request import Request
 import pytest
 
 import showrun.cli
+from showrun.artifacts import create_artifact_from_text
 from showrun.cli import main
 from showrun.mcp_server import handle_message
 
@@ -51,6 +52,11 @@ def test_import_writes_portable_artifact_and_refuses_overwrite(
     with pytest.raises(SystemExit) as error:
         main(["import", str(session), "--output", str(output)])
     assert error.value.code == 2
+
+    assert main(["validate", str(output), "--json"]) == 0
+    validated = json.loads(capsys.readouterr().out)
+    assert validated["format"] == "dvd/1"
+    assert validated["events"] == 2
 
 
 def test_both_installed_entry_points_target_the_same_cli() -> None:
@@ -154,6 +160,42 @@ def test_latest_finds_newest_codex_session(
     assert capsys.readouterr().out.strip() == str(newer)
 
 
+def test_push_accepts_a_portable_artifact(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    portable = tmp_path / "lesson.dvd.json"
+    portable.write_text(create_artifact_from_text(_SESSION).to_json(), encoding="utf-8")
+    monkeypatch.setenv("SHOWRUN_URL", "https://showrun.example")
+    monkeypatch.setenv("SHOWRUN_TOKEN", "sr_live_" + "d" * 44)
+    captured: dict[str, object] = {}
+
+    def fake_api_request(method, path, *, host, token, payload=None):
+        captured.update(
+            method=method,
+            path=path,
+            host=host,
+            token=token,
+            payload=payload,
+        )
+        return {
+            "lesson_url": "/lessons/lesson_portable/edit",
+            "duplicate": False,
+            "warnings": [],
+        }
+
+    monkeypatch.setattr(showrun.cli, "api_request", fake_api_request)
+
+    assert main(["push", str(portable)]) == 0
+
+    payload = captured["payload"]
+    assert isinstance(payload, dict)
+    assert payload["artifact"]["format"] == "dvd/1"
+    assert "transcript" not in payload
+    assert "lesson_portable" in capsys.readouterr().out
+
+
 def test_mcp_lists_tools_and_builds_editor_url(
     tmp_path: Path,
     monkeypatch,
@@ -187,7 +229,29 @@ def test_mcp_lists_tools_and_builds_editor_url(
     assert initialized is not None
     assert initialized["result"]["serverInfo"]["name"] == "showrun"
     assert listed is not None
-    assert len(listed["result"]["tools"]) == 3
+    assert len(listed["result"]["tools"]) == 4
     assert opened is not None
     text = opened["result"]["content"][0]["text"]
     assert json.loads(text)["editor_url"] == "https://showrun.example/lessons/lesson_123/edit"
+
+
+def test_mcp_validates_a_portable_artifact(tmp_path: Path) -> None:
+    portable = tmp_path / "lesson.dvd.json"
+    portable.write_text(create_artifact_from_text(_SESSION).to_json(), encoding="utf-8")
+
+    result = handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/call",
+            "params": {
+                "name": "showrun_validate_artifact",
+                "arguments": {"path": str(portable)},
+            },
+        }
+    )
+
+    assert result is not None
+    payload = json.loads(result["result"]["content"][0]["text"])
+    assert payload["format"] == "dvd/1"
+    assert payload["events"] == 2

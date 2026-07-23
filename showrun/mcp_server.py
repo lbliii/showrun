@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from typing import Any, TextIO
 
+from showrun.artifacts import artifact_from_json
 from showrun.cli import _load_credentials, api_request, find_latest_session, push_session
 
 PROTOCOL_VERSION = "2025-03-26"
@@ -14,7 +15,7 @@ PROTOCOL_VERSION = "2025-03-26"
 TOOLS = [
     {
         "name": "showrun_import_session",
-        "description": "Import a local agent session into Showrun as a private draft.",
+        "description": "Import a local agent session or dvd/1 artifact as a private draft.",
         "inputSchema": {
             "type": "object",
             "properties": {
@@ -22,6 +23,15 @@ TOOLS = [
                 "latest": {"type": "boolean", "default": False},
                 "title": {"type": "string"},
             },
+        },
+    },
+    {
+        "name": "showrun_validate_artifact",
+        "description": "Validate a local portable dvd/1 artifact before sharing it.",
+        "inputSchema": {
+            "type": "object",
+            "properties": {"path": {"type": "string"}},
+            "required": ["path"],
         },
     },
     {
@@ -65,6 +75,21 @@ def call_tool(name: str, arguments: dict[str, Any]) -> dict[str, object]:
         if name == "showrun_list_drafts":
             host, token = _load_credentials()
             return _tool_result(api_request("GET", "/api/v1/lessons", host=host, token=token))
+        if name == "showrun_validate_artifact":
+            path = Path(str(arguments.get("path") or "")).expanduser()
+            if not path.is_file():
+                raise ValueError("A valid artifact path is required")
+            artifact = artifact_from_json(path.read_text(encoding="utf-8"))
+            return _tool_result(
+                {
+                    "format": "dvd/1",
+                    "title": artifact.title,
+                    "events": len(artifact.events),
+                    "chapters": len(artifact.chapters),
+                    "duration": artifact.duration,
+                    "warnings": list(artifact.warnings),
+                }
+            )
         if name == "showrun_open_editor":
             lesson_id = str(arguments.get("lesson_id") or "").strip()
             if not lesson_id.startswith("lesson_"):

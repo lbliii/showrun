@@ -52,7 +52,9 @@ _SECRET_PATTERNS = (
 )
 
 
-def _redact_text(text: str) -> str:
+def redact_text(text: str) -> str:
+    """Remove common credential shapes from user-visible imported text."""
+
     redacted = text
     for pattern in _SECRET_PATTERNS:
         redacted = pattern.sub("[REDACTED]", redacted)
@@ -114,12 +116,13 @@ def _canonical_session(
             role = str(message.get("role") or "assistant")
             kind = "user" if role == "user" else "assistant"
             label = "You" if kind == "user" else "Agent"
-            text = _redact_text(str(message.get("content") or ""))
+            text = redact_text(str(message.get("content") or ""))
         elif record_type == "event":
             raw_event = payload.get("event") or {}
-            kind = str(raw_event.get("kind") or "tool")
+            raw_kind = str(raw_event.get("kind") or "tool")
+            kind = raw_kind if raw_kind in {"tool", "result"} else "tool"
             label = str(raw_event.get("name") or ("Tool" if kind == "tool" else "Result"))
-            text = _redact_text(str(raw_event.get("content") or ""))
+            text = redact_text(str(raw_event.get("content") or ""))
         else:
             raise ValueError(f"Unsupported canonical record on line {line_number}")
 
@@ -174,7 +177,7 @@ def _codex_session(
             text = _content_text(item.get("content"))
             if role == "user":
                 text = _clean_user_text(text)
-            text = _redact_text(text)
+            text = redact_text(text)
             kind = role
             label = "You" if role == "user" else "Codex"
         elif item_type == "function_call":

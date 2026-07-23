@@ -9,6 +9,7 @@ from urllib.parse import urlencode
 
 from chirp.testing import TestClient
 
+from showrun.artifacts import create_artifact_from_text
 from showrun.auth import password_hash
 from showrun.web import create_app
 
@@ -344,13 +345,32 @@ async def test_workspaces_are_isolated_and_tokens_are_revocable(tmp_path: Path) 
         assert api_import.status == 201
         assert api_duplicate.status == 200
         assert json.loads(api_duplicate.text)["duplicate"] is True
+        portable = create_artifact_from_text(
+            api_session.replace("api-test", "portable-test"),
+            title="Portable source",
+        )
+        portable_import = await client.post(
+            "/api/v1/imports",
+            body=json.dumps(
+                {
+                    "filename": "portable.dvd.json",
+                    "title": "Portable upload",
+                    "artifact": portable.to_manifest(),
+                }
+            ).encode(),
+            headers={
+                "Authorization": f"Bearer {plaintext_token}",
+                "Content-Type": "application/json",
+            },
+        )
+        assert portable_import.status == 201
         api_lessons = await client.get(
             "/api/v1/lessons",
             headers={"Authorization": f"Bearer {plaintext_token}"},
         )
         assert api_lessons.status == 200
         lesson_titles = {lesson["title"] for lesson in json.loads(api_lessons.text)["lessons"]}
-        assert {"Private to workspace one", "Pushed from sr"} <= lesson_titles
+        assert {"Private to workspace one", "Pushed from sr", "Portable upload"} <= lesson_titles
 
         revoked = await client.post(
             f"/settings/tokens/{token_id_match.group(1)}/revoke",

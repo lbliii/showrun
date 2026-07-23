@@ -17,7 +17,12 @@ from chirp.http.response import Response
 from chirp.middleware.auth import current_user, login, logout
 from chirp.templating.returns import MutationResult, Page
 
-from showrun.artifacts import ShowrunArtifact, create_artifact_from_text, direct_artifact
+from showrun.artifacts import (
+    ShowrunArtifact,
+    artifact_from_json,
+    create_artifact_from_text,
+    direct_artifact,
+)
 from showrun.auth import (
     LoginThrottle,
     issue_token,
@@ -57,6 +62,28 @@ def _base_url(request: Request) -> str:
 
 def _markdown_label(value: str) -> str:
     return value.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
+
+
+def _is_portable_artifact(raw: str, filename: str) -> bool:
+    if filename.lower().endswith(".dvd.json"):
+        return True
+    try:
+        candidate = json.loads(raw)
+    except json.JSONDecodeError:
+        return False
+    return isinstance(candidate, dict) and candidate.get("format") == "dvd/1"
+
+
+def _import_artifact(raw: str, *, filename: str, title: str = "") -> ShowrunArtifact:
+    is_portable = _is_portable_artifact(raw, filename)
+    artifact = (
+        artifact_from_json(raw)
+        if is_portable
+        else create_artifact_from_text(raw, filename=filename, title=title)
+    )
+    if title and is_portable:
+        artifact = replace(artifact, title=" ".join(title.split())[:120])
+    return artifact
 
 
 def _player_context(
@@ -428,10 +455,13 @@ class ShowrunRoutes:
                 error="Choose a JSONL file or paste a session.",
             )
         try:
-            artifact = create_artifact_from_text(transcript, filename=filename, title=title)
+            artifact = _import_artifact(transcript, filename=filename, title=title)
         except ValueError as exc:
             return Page("import.html", "page_root", error=str(exc))
-        digest = hashlib.sha256(transcript.encode()).hexdigest()
+        digest_source = (
+            artifact.to_json() if _is_portable_artifact(transcript, filename) else transcript
+        )
+        digest = hashlib.sha256(digest_source.encode()).hexdigest()
         lesson, _duplicate = await self._persist_import(
             user=user,
             artifact=artifact,
@@ -453,13 +483,20 @@ class ShowrunRoutes:
         transcript = str(payload.get("transcript") or "")
         filename = str(payload.get("filename") or "session.jsonl")[:255]
         title = str(payload.get("title") or "")
+        portable = payload.get("artifact")
+        if isinstance(portable, dict):
+            transcript = json.dumps(portable, ensure_ascii=False, separators=(",", ":"))
+            filename = filename if filename.endswith(".dvd.json") else "lesson.dvd.json"
         if not transcript:
-            return _json_response({"error": "transcript is required."}, status=422)
+            return _json_response({"error": "transcript or artifact is required."}, status=422)
         try:
-            artifact = create_artifact_from_text(transcript, filename=filename, title=title)
+            artifact = _import_artifact(transcript, filename=filename, title=title)
         except ValueError as exc:
             return _json_response({"error": str(exc)}, status=422)
-        digest = hashlib.sha256(transcript.encode()).hexdigest()
+        digest_source = (
+            artifact.to_json() if _is_portable_artifact(transcript, filename) else transcript
+        )
+        digest = hashlib.sha256(digest_source.encode()).hexdigest()
         lesson, duplicate = await self._persist_import(
             user=user,
             artifact=artifact,

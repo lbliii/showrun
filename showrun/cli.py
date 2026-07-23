@@ -7,13 +7,14 @@ import getpass
 import json
 import os
 from collections.abc import Sequence
+from dataclasses import replace
 from importlib.metadata import version
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.parse import urljoin, urlparse
 from urllib.request import Request, urlopen
 
-from showrun.artifacts import create_artifact_from_text
+from showrun.artifacts import artifact_from_json, create_artifact_from_text
 
 DEFAULT_HOST = "https://showrun-production.up.railway.app"
 
@@ -25,6 +26,9 @@ def _artifact(path: Path, title: str = ""):
         source = path.read_text(encoding="utf-8")
     except UnicodeDecodeError as exc:
         raise ValueError("Session files must be UTF-8 JSONL") from exc
+    if path.name.lower().endswith(".dvd.json"):
+        artifact = artifact_from_json(source)
+        return replace(artifact, title=title.strip()[:120]) if title.strip() else artifact
     return create_artifact_from_text(source, filename=path.name, title=title)
 
 
@@ -202,16 +206,27 @@ def push_session(
         host_override=host_override,
         token_override=token_override,
     )
+    request_payload: dict[str, object] = {
+        "filename": path.name,
+        "title": title,
+    }
+    if path.name.lower().endswith(".dvd.json"):
+        try:
+            portable = json.loads(transcript)
+        except json.JSONDecodeError as exc:
+            raise ValueError("Portable artifacts must be valid JSON") from exc
+        if not isinstance(portable, dict):
+            raise ValueError("Portable artifacts must be JSON objects")
+        artifact_from_json(transcript)
+        request_payload["artifact"] = portable
+    else:
+        request_payload["transcript"] = transcript
     payload = api_request(
         "POST",
         "/api/v1/imports",
         host=host,
         token=token,
-        payload={
-            "filename": path.name,
-            "title": title,
-            "transcript": transcript,
-        },
+        payload=request_payload,
     )
     lesson_url = str(payload.get("lesson_url") or "")
     if not lesson_url:
@@ -272,6 +287,14 @@ def _parser() -> argparse.ArgumentParser:
     inspect_command.add_argument("path", type=Path)
     inspect_command.add_argument("--json", action="store_true")
     inspect_command.set_defaults(handler=_inspect)
+
+    validate_command = commands.add_parser(
+        "validate",
+        help="Validate and summarize a portable dvd/1 artifact",
+    )
+    validate_command.add_argument("path", type=Path)
+    validate_command.add_argument("--json", action="store_true")
+    validate_command.set_defaults(handler=_inspect)
 
     direct_command = commands.add_parser(
         "import",
