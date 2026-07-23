@@ -73,7 +73,7 @@ def create_app(
         verify_token=lambda token: verify_api_token(store, token),
         login_url="/login",
     )
-    csrf = CSRFConfig(exempt_paths=frozenset({"/api/v1/imports", "/api/v1/events"}))
+    csrf = CSRFConfig(exempt_paths=frozenset({"/api/v1/imports"}))
     for middleware in secure_stack(application.config, auth=auth, csrf=csrf, headers=headers):
         application.add_middleware(middleware)
 

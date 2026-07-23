@@ -14,14 +14,16 @@ CLI alias is `sr`. Portable releases use the versioned `dvd/1` artifact format.
 - Codex rollout and canonical Showrun JSONL import
 - Local structural filtering and common credential redaction
 - Deterministic reading-time pacing and proposed chapters
-- Persistent draft library
+- Sanitization review and a minimal lesson director
+- Persistent, account-isolated draft libraries
 - Email/password accounts with isolated workspaces
 - Hashed, revocable API tokens for CLI access
 - Public and unlisted immutable releases
 - Responsive watch and iframe embed pages
+- Workspace import, publish, watch, and embed measurements
 - oEmbed discovery and response
 - Downloadable `.dvd.json` release manifests
-- `showrun` and `sr` local CLI entry points
+- `showrun` and `sr` CLI login, inspect, import, push, and serve workflows
 
 The curated conversation in `static/artifacts/` is the golden fixture and
 ships as the first public release.

@@ -171,8 +171,8 @@ class ShowrunRoutes:
         form = await request.form()
         raw_email = str(form.get("email") or "")
         password = str(form.get("password") or "")
-        key = request.client[0] if request.client else "unknown"
-        if not self.login_throttle.allow(f"login:{key}"):
+        throttle_key = f"login:{request.trusted_client_ip}:{raw_email.strip().lower()}"
+        if not self.login_throttle.allow(throttle_key):
             return Page(
                 "login.html",
                 "page_root",
@@ -184,7 +184,8 @@ class ShowrunRoutes:
         except ValueError:
             email = raw_email.strip().lower()
         user = await self.store.get_user_by_email(email)
-        if user is None or not verify_password(password, user.password_hash if user else None):
+        password_ok = verify_password(password, user.password_hash if user else None)
+        if user is None or not password_ok:
             return Page(
                 "login.html",
                 "page_root",
@@ -206,8 +207,7 @@ class ShowrunRoutes:
         raw_email = str(form.get("email") or "")
         raw_name = str(form.get("name") or "")
         raw_password = str(form.get("password") or "")
-        key = request.client[0] if request.client else "unknown"
-        if not self.login_throttle.allow(f"signup:{key}"):
+        if not self.login_throttle.allow(f"signup:{request.trusted_client_ip}"):
             return Page(
                 "signup.html",
                 "page_root",
@@ -238,6 +238,8 @@ class ShowrunRoutes:
         try:
             user = await self.store.create_user(email=email, name=name, password_hash=hashed)
         except QueryError:
+            if await self.store.get_user_by_email(email) is None:
+                raise
             return Page(
                 "signup.html",
                 "page_root",
@@ -307,6 +309,36 @@ class ShowrunRoutes:
             return denied
         return Page("import.html", "page_root", error="")
 
+    async def _persist_import(
+        self,
+        *,
+        user: UserRecord,
+        artifact: ShowrunArtifact,
+        digest: str,
+        channel: str,
+    ) -> tuple[LessonRecord, bool]:
+        duplicate = await self.store.find_duplicate(user.workspace_id, digest)
+        if duplicate is not None:
+            return duplicate, True
+        try:
+            lesson = await self.store.create_draft(
+                artifact,
+                workspace_id=user.workspace_id,
+                source_sha256=digest,
+            )
+        except QueryError:
+            duplicate = await self.store.find_duplicate(user.workspace_id, digest)
+            if duplicate is None:
+                raise
+            return duplicate, True
+        await self.store.record_usage(
+            "lesson.imported",
+            workspace_id=user.workspace_id,
+            lesson_id=lesson.id,
+            properties={"source_format": artifact.source_format, "channel": channel},
+        )
+        return lesson, False
+
     async def import_session(self, request: Request) -> MutationResult | Page | Response:
         user, denied = self.require_user()
         if denied or user is None:
@@ -338,19 +370,11 @@ class ShowrunRoutes:
         except ValueError as exc:
             return Page("import.html", "page_root", error=str(exc))
         digest = hashlib.sha256(transcript.encode()).hexdigest()
-        duplicate = await self.store.find_duplicate(user.workspace_id, digest)
-        if duplicate is not None:
-            return MutationResult(f"/lessons/{duplicate.id}/edit")
-        lesson = await self.store.create_draft(
-            artifact,
-            workspace_id=user.workspace_id,
-            source_sha256=digest,
-        )
-        await self.store.record_usage(
-            "lesson.imported",
-            workspace_id=user.workspace_id,
-            lesson_id=lesson.id,
-            properties={"source_format": artifact.source_format, "channel": "browser"},
+        lesson, _duplicate = await self._persist_import(
+            user=user,
+            artifact=artifact,
+            digest=digest,
+            channel="browser",
         )
         return MutationResult(f"/lessons/{lesson.id}/edit")
 
@@ -374,20 +398,12 @@ class ShowrunRoutes:
         except ValueError as exc:
             return _json_response({"error": str(exc)}, status=422)
         digest = hashlib.sha256(transcript.encode()).hexdigest()
-        lesson = await self.store.find_duplicate(user.workspace_id, digest)
-        duplicate = lesson is not None
-        if lesson is None:
-            lesson = await self.store.create_draft(
-                artifact,
-                workspace_id=user.workspace_id,
-                source_sha256=digest,
-            )
-            await self.store.record_usage(
-                "lesson.imported",
-                workspace_id=user.workspace_id,
-                lesson_id=lesson.id,
-                properties={"source_format": artifact.source_format, "channel": "api"},
-            )
+        lesson, duplicate = await self._persist_import(
+            user=user,
+            artifact=artifact,
+            digest=digest,
+            channel="api",
+        )
         return _json_response(
             {
                 "duplicate": duplicate,
