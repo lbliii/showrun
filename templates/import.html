@@ -1,0 +1,59 @@
+{% extends "chirpui/app_layout.html" %}
+
+{% block title %}Import a session · Showrun{% end %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="/static/library.css">
+<link rel="stylesheet" href="/static/forms.css">
+{% end %}
+
+{% block content %}
+{% block page_root %}
+<main class="import-shell">
+  <header class="library-nav">
+    <a class="brand" href="/">
+      <span class="brand-mark">SR</span>
+      <span>Showrun</span>
+    </a>
+    <a class="library-button secondary" href="/">Back to library</a>
+  </header>
+
+  <section class="import-grid">
+    <div class="import-copy">
+      <p class="eyebrow">New show</p>
+      <h1>Import an agent session.</h1>
+      <p>Upload a Codex rollout or Showrun JSONL. Parsing, structural filtering, and smart direction happen before the sanitized draft is stored.</p>
+      <ol>
+        <li><span>01</span>System instructions and raw tool outputs are excluded.</li>
+        <li><span>02</span>Reading time determines the first editorial pace.</li>
+        <li><span>03</span>User turns propose chapter boundaries.</li>
+      </ol>
+    </div>
+
+    <form
+      class="import-card"
+      action="/imports"
+      method="post"
+      enctype="multipart/form-data"
+      hx-boost="false"
+    >
+      {{ csrf_field() }}
+      {% if error %}<div class="form-error">{{ error }}</div>{% endif %}
+      <label for="title">Optional lesson title</label>
+      <input id="title" name="title" maxlength="120" placeholder="Let Showrun derive it">
+
+      <label for="session_file">Session JSONL</label>
+      <input id="session_file" name="session_file" type="file" accept=".jsonl,.json,application/json">
+
+      <div class="form-divider"><span>or paste it</span></div>
+
+      <label for="transcript">Session contents</label>
+      <textarea id="transcript" name="transcript" rows="10" placeholder='{"type":"session", ...}'></textarea>
+
+      <button class="hero-action" type="submit">Create private draft <span>→</span></button>
+      <small>Maximum 2 MB. Nothing is published automatically.</small>
+    </form>
+  </section>
+</main>
+{% end %}
+{% end %}

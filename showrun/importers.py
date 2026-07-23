@@ -37,6 +37,26 @@ _HIDDEN_BLOCKS = re.compile(
     r"(?:in-app-browser-context|environment_context|recommended_plugins)>",
     flags=re.DOTALL,
 )
+_SECRET_PATTERNS = (
+    re.compile(r"\b(?:sk|rk)-[A-Za-z0-9_-]{16,}\b"),
+    re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b"),
+    re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{12,}"),
+    re.compile(
+        r"(?i)\b(api[_-]?key|token|password|secret)\s*[:=]\s*"
+        r"([\"']?)[A-Za-z0-9._~+/=-]{8,}\2"
+    ),
+    re.compile(
+        r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----",
+        flags=re.DOTALL,
+    ),
+)
+
+
+def _redact_text(text: str) -> str:
+    redacted = text
+    for pattern in _SECRET_PATTERNS:
+        redacted = pattern.sub("[REDACTED]", redacted)
+    return redacted
 
 
 def _content_text(content: Any) -> str:
@@ -94,16 +114,23 @@ def _canonical_session(
             role = str(message.get("role") or "assistant")
             kind = "user" if role == "user" else "assistant"
             label = "You" if kind == "user" else "Agent"
-            text = str(message.get("content") or "")
+            text = _redact_text(str(message.get("content") or ""))
         elif record_type == "event":
             raw_event = payload.get("event") or {}
             kind = str(raw_event.get("kind") or "tool")
             label = str(raw_event.get("name") or ("Tool" if kind == "tool" else "Result"))
-            text = str(raw_event.get("content") or "")
+            text = _redact_text(str(raw_event.get("content") or ""))
         else:
             raise ValueError(f"Unsupported canonical record on line {line_number}")
 
-        preview = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+        preview = json.dumps(
+            {
+                "type": record_type,
+                "role": (payload.get("message") or {}).get("role"),
+                "name": (payload.get("event") or {}).get("name"),
+            },
+            separators=(",", ":"),
+        )
         events.append(
             TraceEvent(
                 id=event_id,
@@ -147,6 +174,7 @@ def _codex_session(
             text = _content_text(item.get("content"))
             if role == "user":
                 text = _clean_user_text(text)
+            text = _redact_text(text)
             kind = role
             label = "You" if role == "user" else "Codex"
         elif item_type == "function_call":
@@ -220,4 +248,6 @@ def parse_session_text(
 
     if not events:
         raise ValueError("The session contains no replayable user, assistant, or tool events")
+    if any("[REDACTED]" in event.text for event in events):
+        warnings.append("Potential credentials were redacted locally.")
     return title, session_id, source_format, events, tuple(warnings)

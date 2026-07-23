@@ -16,7 +16,8 @@ CANONICAL = """\
 {"type":"message","at":0,"message":{"role":"user","content":"How should we structure this?"}}
 {"type":"message","at":9,"message":\
 {"role":"assistant","content":"Start with an immutable recording."}}
-{"type":"event","at":20,"event":{"kind":"tool","name":"tests","content":"Four tests passed."}}
+{"type":"event","at":20,"event":\
+{"kind":"tool","name":"tests","content":"Four tests passed. token=abcdefghijk12345"}}
 """
 
 
@@ -29,6 +30,8 @@ def test_canonical_import_creates_deterministic_directed_artifact() -> None:
     assert artifact.duration > artifact.events[-1].at
     assert artifact.chapters[0].name == "Opening"
     assert artifact.to_manifest()["format"] == FORMAT_VERSION
+    assert "[REDACTED]" in artifact.events[-1].text
+    assert "abcdefghijk12345" not in artifact.to_json()
 
 
 def test_codex_import_excludes_internal_messages_and_tool_arguments() -> None:
@@ -109,7 +112,10 @@ def test_import_ignores_only_an_incomplete_final_record() -> None:
 
     assert title == "A tiny agent lesson"
     assert len(events) == 3
-    assert warnings == ("Ignored an incomplete final JSONL record.",)
+    assert warnings == (
+        "Ignored an incomplete final JSONL record.",
+        "Potential credentials were redacted locally.",
+    )
 
 
 def test_import_rejects_invalid_middle_record() -> None:

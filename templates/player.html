@@ -3,10 +3,18 @@
 {% from "chirpui/button.html" import btn %}
 {% from "components.html" import event_card, trace_row %}
 
-{% block title %}Showrun — Agent sessions, taught.{% end %}
+{% block title %}{{ title }} · Showrun{% end %}
 
 {% block head_extra %}
-<meta name="description" content="Showrun turns real agent sessions into polished visual lessons.">
+<meta name="description" content="{{ description or 'A directed agent session on Showrun.' }}">
+{% if canonical_url %}<link rel="canonical" href="{{ canonical_url }}">{% endif %}
+{% if canonical_url %}
+<link rel="alternate" type="application/json+oembed" href="/oembed?url={{ canonical_url }}" title="{{ title }}">
+{% endif %}
+<meta property="og:type" content="video.other">
+<meta property="og:title" content="{{ title }}">
+<meta property="og:description" content="{{ description or 'Watch this directed agent session.' }}">
+{% if canonical_url %}<meta property="og:url" content="{{ canonical_url }}">{% endif %}
 <link rel="stylesheet" href="/static/showrun.css">
 <script defer src="/static/showrun.js"></script>
 {% end %}
@@ -16,7 +24,7 @@
 <script id="showrun-player-config" type="application/json">{{ player_config | tojson }}</script>
 
 <main
-  class="app-shell"
+  class="app-shell{% if embed %} embed-mode{% endif %}"
   x-data="showrunPlayer('showrun-player-config')"
   x-init="init()"
   x-cloak
@@ -24,22 +32,26 @@
   @keydown.window.arrow-right.prevent="seek(5)"
   @keydown.window.arrow-left.prevent="seek(-5)"
 >
+  {% if not embed %}
   <header class="topbar">
     <a class="brand" href="/" aria-label="Showrun home">
       <span class="brand-mark">SR</span>
       <span>Showrun</span>
-      <span class="prototype-tag">prototype 002 · Python cut</span>
+      <span class="prototype-tag">dvd/1 · {{ state }}</span>
     </a>
     <div class="topbar-actions">
       {{ badge("Chirp + Kida", variant="success", cls="stack-badge") }}
       <span class="source-pill">
         <span class="live-dot"></span>
-        Source: this chat
+        {{ source_format }}
       </span>
-      <button class="quiet-button" @click="notify('Share link copied')">Share artifact</button>
-      <button class="export-button" @click="notify('Export queued · 16:9 · captions on')">
-        Export <span>↗</span>
-      </button>
+      <button
+        class="quiet-button"
+        @click="navigator.clipboard.writeText(window.location.href); notify('Share link copied')"
+      >Share</button>
+      {% if manifest_url %}
+      <a class="export-button" href="{{ manifest_url }}">Download .dvd <span>↗</span></a>
+      {% endif %}
     </div>
   </header>
 
@@ -51,9 +63,10 @@
     <div class="artifact-meta">
       <div><span>Runtime</span><strong x-text="formatTime(duration)"></strong></div>
       <div><span>Events</span><strong>{{ events | length }}</strong></div>
-      <div><span>Integrity</span><strong class="integrity">Raw + edited</strong></div>
+      <div><span>Integrity</span><strong class="integrity">Sanitized + directed</strong></div>
     </div>
   </section>
+  {% endif %}
 
   <section class="workspace">
     <aside class="chapter-rail" aria-label="Lesson chapters">
@@ -174,28 +187,45 @@
       {% end %}
 
       <div class="layer-stack">
-        <a href="/static/artifacts/showrun-session.jsonl" download>
+        <span>
           <span class="layer-dot raw"></span>
           <span>
             <strong>Source trace</strong>
-            <small>Immutable JSONL · download</small>
+            <small>{{ source_format }} · sanitized</small>
           </span>
-        </a>
-        <a href="/static/artifacts/showrun-lesson.tape" download>
+        </span>
+        {% if manifest_url %}
+        <a href="{{ manifest_url }}" download>
           <span class="layer-dot edit"></span>
           <span>
-            <strong>Lesson overlay</strong>
-            <small>Showrun tape · download</small>
+            <strong>Portable release</strong>
+            <small>dvd/1 · download</small>
           </span>
         </a>
+        {% endif %}
       </div>
-      {{ btn("Open source artifact", href="/static/artifacts/showrun-session.jsonl", variant="secondary", size="sm", cls="download-button") }}
-      <button class="edit-button" @click="notify('The Showrun lesson editor is the next surface')">
-        Edit this lesson <span>→</span>
-      </button>
+      {% if manage %}
+      <form
+        class="publish-form"
+        action="/lessons/{{ lesson_id }}/publish"
+        method="post"
+        hx-boost="false"
+      >
+        {{ csrf_field() }}
+        <label for="visibility">Release visibility</label>
+        <select id="visibility" name="visibility">
+          <option value="unlisted">Unlisted</option>
+          <option value="public">Public library</option>
+        </select>
+        <button class="edit-button" type="submit">Publish this revision <span>→</span></button>
+      </form>
+      {% elif canonical_url %}
+      {{ btn("Open watch page", href=canonical_url, variant="secondary", size="sm", cls="download-button") }}
+      {% endif %}
     </aside>
   </section>
 
+  {% if not embed %}
   <section class="transcript-drawer" x-show="transcript" x-transition>
     <div>
       <p class="eyebrow">Accessible transcript</p>
@@ -213,9 +243,10 @@
   </section>
 
   <footer>
-    <span>Showrun turns real agent sessions into visual lessons.</span>
+    <span>Showrun turns agent runs into shows people can learn from.</span>
     <span>Chirp · Kida · Chirp UI · Patitas · Rosettes</span>
   </footer>
+  {% endif %}
 
   <div class="toast" x-show="toast" x-transition x-text="toast"></div>
 </main>

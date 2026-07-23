@@ -1,0 +1,32 @@
+{% extends "chirpui/app_layout.html" %}
+
+{% block title %}Director sign in · Showrun{% end %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="/static/library.css">
+<link rel="stylesheet" href="/static/forms.css">
+{% end %}
+
+{% block content %}
+{% block page_root %}
+<main class="auth-shell">
+  <a class="brand" href="/">
+    <span class="brand-mark">SR</span>
+    <span>Showrun</span>
+  </a>
+  <section class="auth-card">
+    <p class="eyebrow">Director access</p>
+    <h1>Open your library.</h1>
+    <p>This alpha uses a workspace director token. Hosted account authentication comes in the next identity slice.</p>
+    {% if error %}<div class="form-error">{{ error }}</div>{% endif %}
+    <form action="/login" method="post" hx-boost="false">
+      {{ csrf_field() }}
+      <label for="token">Director token</label>
+      <input id="token" name="token" type="password" required autofocus>
+      <button class="hero-action" type="submit">Sign in <span>→</span></button>
+    </form>
+    {% if local_hint %}<small class="local-hint">Local development token: <code>{{ local_hint }}</code></small>{% endif %}
+  </section>
+</main>
+{% end %}
+{% end %}

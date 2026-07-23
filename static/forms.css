@@ -1,0 +1,159 @@
+.import-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(420px, 0.7fr);
+  gap: 70px;
+  padding: 72px 0;
+}
+
+.import-copy h1 {
+  font-size: clamp(48px, 6vw, 78px);
+}
+
+.import-copy ol {
+  margin: 50px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.import-copy li {
+  display: grid;
+  grid-template-columns: 50px 1fr;
+  gap: 15px;
+  padding: 17px 0;
+  border-top: 1px solid var(--line);
+  line-height: 1.45;
+}
+
+.import-copy li span {
+  color: var(--signal);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 11px;
+}
+
+.import-card,
+.auth-card {
+  display: grid;
+  align-self: start;
+  gap: 11px;
+  padding: 30px;
+  border: 1px solid var(--ink);
+  background: var(--card);
+  box-shadow: 10px 10px 0 var(--ink);
+}
+
+.import-card label,
+.auth-card label {
+  margin-top: 8px;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.import-card input,
+.import-card textarea,
+.auth-card input {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  background: white;
+  color: var(--ink);
+}
+
+.import-card input,
+.auth-card input {
+  min-height: 44px;
+  padding: 0 12px;
+}
+
+.import-card input[type="file"] {
+  padding: 10px;
+}
+
+.import-card textarea {
+  min-height: 190px;
+  padding: 12px;
+  resize: vertical;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 11px;
+}
+
+.import-card small,
+.local-hint {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.form-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 7px 0;
+  color: var(--muted);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+
+.form-divider::before,
+.form-divider::after {
+  height: 1px;
+  flex: 1;
+  background: var(--line);
+  content: "";
+}
+
+.form-error {
+  padding: 11px;
+  border: 1px solid #d44;
+  background: #ffe2dc;
+  color: #8a251c;
+  font-size: 12px;
+}
+
+.auth-shell {
+  width: min(540px, calc(100% - 36px));
+  min-height: 100vh;
+  display: grid;
+  align-content: center;
+  gap: 24px;
+  margin: 0 auto;
+  padding: 50px 0;
+}
+
+.auth-card h1 {
+  font-size: 48px;
+}
+
+.auth-card .hero-action,
+.import-card .hero-action {
+  margin-top: 12px;
+}
+
+@media (max-width: 900px) {
+  .import-grid {
+    grid-template-columns: 1fr;
+    gap: 35px;
+  }
+}
+
+@media (max-width: 620px) {
+  .import-shell {
+    width: min(100% - 24px, 1320px);
+  }
+
+  .import-copy h1 {
+    font-size: 45px;
+  }
+
+  .import-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .import-card,
+  .auth-card {
+    padding: 22px;
+    box-shadow: 6px 6px 0 var(--ink);
+  }
+}

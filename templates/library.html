@@ -1,0 +1,80 @@
+{% extends "chirpui/app_layout.html" %}
+{% from "chirpui/badge.html" import badge %}
+
+{% block title %}Your library · Showrun{% end %}
+
+{% block head_extra %}
+<meta name="description" content="Import, direct, publish, and share agent sessions with Showrun.">
+<link rel="stylesheet" href="/static/library.css">
+{% end %}
+
+{% block content %}
+{% block page_root %}
+<main class="library-shell">
+  <header class="library-nav">
+    <a class="brand" href="/">
+      <span class="brand-mark">SR</span>
+      <span>Showrun</span>
+    </a>
+    <nav>
+      {% if admin %}
+      <a class="library-button secondary" href="/imports/new">Import session</a>
+      <form action="/logout" method="post" hx-boost="false">
+        {{ csrf_field() }}
+        <button class="quiet-button">Sign out</button>
+      </form>
+      {% else %}
+      <a class="library-button" href="/login">Director sign in</a>
+      {% endif %}
+    </nav>
+  </header>
+
+  <section class="library-hero">
+    <div>
+      <p class="eyebrow">The watchable agent library</p>
+      <h1>Turn agent runs into shows people can learn from.</h1>
+      <p>Import a session, let Showrun direct the first cut, then publish a stable watch page or documentation embed.</p>
+    </div>
+    {% if admin %}
+    <a class="hero-action" href="/imports/new">Import your first run <span>→</span></a>
+    {% endif %}
+  </section>
+
+  <section class="library-section">
+    <div class="section-heading">
+      <div>
+        <p class="eyebrow">{% if admin %}Your workspace{% else %}Public screenings{% endif %}</p>
+        <h2>{% if admin %}Shows and drafts{% else %}Published shows{% endif %}</h2>
+      </div>
+      {{ badge((lessons | length) ~ " titles", variant="success") }}
+    </div>
+
+    {% if lessons %}
+    <div class="show-grid">
+      {% for lesson in lessons %}
+      <a class="show-card" href="{% if admin %}/lessons/{{ lesson.id }}{% else %}/watch/{{ lesson.release_slug }}{% endif %}">
+        <div class="show-cover">
+          <span class="cover-kicker">{{ lesson.event_count }} events</span>
+          <strong>{{ lesson.title }}</strong>
+          <span class="cover-play">▶</span>
+        </div>
+        <div class="show-meta">
+          <div>
+            <strong>{{ lesson.title }}</strong>
+            <small>{{ lesson.description or "Directed agent session" }}</small>
+          </div>
+          <span class="status status-{{ lesson.status }}">{{ lesson.status }}</span>
+        </div>
+      </a>
+      {% end %}
+    </div>
+    {% else %}
+    <div class="empty-library">
+      <strong>No published Showruns yet.</strong>
+      <p>The first release added to this library will appear here.</p>
+    </div>
+    {% endif %}
+  </section>
+</main>
+{% end %}
+{% end %}
