@@ -38,3 +38,8 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["showrun"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"migrations" = "showrun/_web/migrations"
+"static" = "showrun/_web/static"
+"templates" = "showrun/_web/templates"

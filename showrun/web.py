@@ -19,7 +19,10 @@ from showrun.auth import verify_api_token
 from showrun.routes import ShowrunRoutes
 from showrun.store import ShowrunStore
 
-ROOT = Path(__file__).parent.parent
+PACKAGE_ROOT = Path(__file__).parent
+SOURCE_ROOT = PACKAGE_ROOT.parent
+BUNDLED_WEB = PACKAGE_ROOT / "_web"
+ROOT = BUNDLED_WEB if BUNDLED_WEB.is_dir() else SOURCE_ROOT
 STATIC = ROOT / "static"
 TEMPLATES = ROOT / "templates"
 MIGRATIONS = ROOT / "migrations"
@@ -57,7 +60,7 @@ def create_app(
 
     resolved_database_url = database_url or os.environ.get(
         "DATABASE_URL",
-        f"sqlite:///{ROOT / 'showrun.db'}",
+        f"sqlite:///{Path.cwd() / 'showrun.db'}",
     )
     application = App(config, db=resolved_database_url, migrations=str(MIGRATIONS))
     register_markdown_filter(application)
