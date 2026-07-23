@@ -1,0 +1,124 @@
+{% extends "layout.html" %}
+
+{% block title %}Direct {{ lesson.title }} · Showrun{% end %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="/static/library.css">
+<link rel="stylesheet" href="/static/forms.css">
+<link rel="stylesheet" href="/static/director.css">
+{% end %}
+
+{% block content %}
+{% block page_root %}
+<div class="director-shell">
+  <header class="library-nav">
+    <a class="brand" href="/">
+      <span class="brand-mark">SR</span>
+      <span>Showrun</span>
+      <span class="prototype-tag">director · r{{ lesson.revision }}</span>
+    </a>
+    <nav>
+      <a class="library-button secondary" href="/lessons/{{ lesson.id }}">Preview</a>
+    </nav>
+  </header>
+
+  <section class="director-heading">
+    <div>
+      <p class="eyebrow">Sanitization review + first cut</p>
+      <h1>Direct the lesson.</h1>
+      <p>This is the exact sanitized material Showrun will publish. The original upload is not retained.</p>
+    </div>
+    <div class="review-state">
+      <strong>{{ artifact.events | length }} safe events</strong>
+      <span>{{ artifact.source_format }}</span>
+    </div>
+  </section>
+
+  {% if artifact.warnings %}
+  <section class="warning-panel">
+    <strong>Import report</strong>
+    <ul>
+      {% for warning in artifact.warnings %}<li>{{ warning }}</li>{% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+  {% if error %}<div class="form-error director-error">{{ error }}</div>{% endif %}
+  {% if saved %}<div class="form-success">Revision saved. Preview or publish when it feels right.</div>{% endif %}
+
+  <form action="/lessons/{{ lesson.id }}/edit" method="post" class="director-form">
+    {{ csrf_field() }}
+    <section class="director-section metadata-editor">
+      <div class="section-number">01</div>
+      <div>
+        <p class="eyebrow">Presentation</p>
+        <h2>Name the lesson</h2>
+      </div>
+      <div class="field-stack">
+        <label for="title">Title</label>
+        <input id="title" name="title" value="{{ artifact.title }}" maxlength="120" required>
+        <label for="description">Description</label>
+        <textarea id="description" name="description" rows="3" maxlength="500">{{ artifact.description }}</textarea>
+      </div>
+    </section>
+
+    <section class="director-section">
+      <div class="section-number">02</div>
+      <div>
+        <p class="eyebrow">Source review</p>
+        <h2>Choose the moments</h2>
+        <p>Uncheck anything that does not teach. Set how long viewers need to read it.</p>
+      </div>
+      <div class="event-editor-list">
+        {% for event in artifact.events %}
+        <article class="event-editor event-{{ event.kind }}">
+          <div class="event-editor-top">
+            <label class="include-toggle">
+              <input type="checkbox" name="event_{{ event.id }}_include" checked>
+              <span>Keep event {{ event.id }}</span>
+            </label>
+            <label>
+              <span>Seconds</span>
+              <input name="event_{{ event.id }}_duration" type="number" min="1" max="60" step="0.1" value="{{ event.duration }}" required>
+            </label>
+          </div>
+          <div class="event-editor-copy">
+            <strong>{{ event.label }}</strong>
+            <span>{{ event.kind }} · source {{ event.source_at | round(1) }}s</span>
+            <p>{{ event.text }}</p>
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="director-section">
+      <div class="section-number">03</div>
+      <div>
+        <p class="eyebrow">Teaching layer</p>
+        <h2>Shape the chapters</h2>
+        <p>Captions appear in the player. Notes and teaching points explain why each moment matters.</p>
+      </div>
+      <div class="chapter-editor-list">
+        {% for chapter in artifact.chapters %}
+        <article class="chapter-editor">
+          <div class="chapter-editor-heading"><span>0{{ loop.index }}</span><strong>{{ chapter.name }}</strong></div>
+          <div class="chapter-grid">
+            <label>Name<input name="chapter_{{ loop.index0 }}_name" value="{{ chapter.name }}" maxlength="80" required></label>
+            <label>Starts at<input name="chapter_{{ loop.index0 }}_at" type="number" min="0" max="{{ artifact.duration }}" step="0.1" value="{{ chapter.at }}" required></label>
+          </div>
+          <label>Caption<input name="chapter_{{ loop.index0 }}_caption" value="{{ chapter.caption }}" maxlength="160"></label>
+          <label>Instructor note<textarea name="chapter_{{ loop.index0 }}_note" rows="3" maxlength="1000">{{ chapter.note }}</textarea></label>
+          <label>Teaching point<textarea name="chapter_{{ loop.index0 }}_teaching_point" rows="2" maxlength="500">{{ chapter.teaching_point }}</textarea></label>
+        </article>
+        {% endfor %}
+      </div>
+    </section>
+
+    <div class="director-actions">
+      <span>Saving creates revision {{ lesson.revision + 1 }}. Existing releases never change.</span>
+      <button class="hero-action" type="submit">Save directed revision <span>→</span></button>
+    </div>
+  </form>
+</div>
+{% end %}
+{% end %}

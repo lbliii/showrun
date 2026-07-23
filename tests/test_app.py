@@ -128,7 +128,13 @@ async def test_director_can_import_preview_publish_and_embed(tmp_path: Path) -> 
             headers={"Content-Type": "application/x-www-form-urlencoded", "Cookie": cookie},
         )
         assert imported.status == 303
-        lesson_path = imported.header("location")
+        editor_path = imported.header("location")
+        assert editor_path.endswith("/edit")
+        editor = await client.get(editor_path, headers={"Cookie": cookie})
+        cookie = _updated_cookie(editor, cookie)
+        assert "System instructions" not in editor.text
+        assert "Sanitization review + first cut" in editor.text
+        lesson_path = editor_path.removesuffix("/edit")
         lesson = await client.get(lesson_path, headers={"Cookie": cookie})
         published = await client.post(
             f"{lesson_path}/publish",
@@ -149,7 +155,6 @@ async def test_director_can_import_preview_publish_and_embed(tmp_path: Path) -> 
         oembed = await client.get(f"/oembed?url=http://testserver/watch/{slug}")
 
     assert "A published Showrun" in lesson.text
-    assert "System instructions" not in lesson.text
     assert "Publish this revision" in lesson.text
     assert watch.status == embed.status == manifest.status == oembed.status == 200
     assert "showrunPlayer" in watch.text
@@ -234,6 +239,60 @@ async def test_workspaces_are_isolated_and_tokens_are_revocable(tmp_path: Path) 
         assert token_match is not None
         plaintext_token = token_match.group(1)
         assert plaintext_token not in created.text.replace(token_match.group(0), "")
+        token_id_match = re.search(r"/settings/tokens/(token_[^/]+)/revoke", created.text)
+        assert token_id_match is not None
+
+        api_session = _SESSION.replace("import-test", "api-test").replace(
+            "Imported test session",
+            "API imported session",
+        )
+        api_import = await client.post(
+            "/api/v1/imports",
+            body=json.dumps(
+                {
+                    "filename": "api-session.jsonl",
+                    "title": "Pushed from sr",
+                    "transcript": api_session,
+                }
+            ).encode(),
+            headers={
+                "Authorization": f"Bearer {plaintext_token}",
+                "Content-Type": "application/json",
+            },
+        )
+        api_duplicate = await client.post(
+            "/api/v1/imports",
+            body=json.dumps(
+                {
+                    "filename": "api-session.jsonl",
+                    "title": "Pushed again",
+                    "transcript": api_session,
+                }
+            ).encode(),
+            headers={
+                "Authorization": f"Bearer {plaintext_token}",
+                "Content-Type": "application/json",
+            },
+        )
+        assert api_import.status == 201
+        assert api_duplicate.status == 200
+        assert json.loads(api_duplicate.text)["duplicate"] is True
+
+        revoked = await client.post(
+            f"/settings/tokens/{token_id_match.group(1)}/revoke",
+            body=urlencode({"_csrf_token": _csrf(created.text)}).encode(),
+            headers={"Content-Type": "application/x-www-form-urlencoded", "Cookie": first_cookie},
+        )
+        assert revoked.status == 303
+        rejected = await client.post(
+            "/api/v1/imports",
+            body=json.dumps({"transcript": api_session}).encode(),
+            headers={
+                "Authorization": f"Bearer {plaintext_token}",
+                "Content-Type": "application/json",
+            },
+        )
+        assert rejected.status == 401
 
         logout_page = await client.get("/", headers={"Cookie": first_cookie})
         logged_out = await client.post(
@@ -254,6 +313,58 @@ async def test_workspaces_are_isolated_and_tokens_are_revocable(tmp_path: Path) 
     assert denied.status == 404
     assert "Private to workspace one" not in second_library.text
     assert plaintext_token.startswith("sr_live_")
+
+
+async def test_director_saves_a_new_revision_and_preserves_release(tmp_path: Path) -> None:
+    app = _application(tmp_path / "director.db")
+    async with TestClient(app) as client:
+        cookie = await _signup(client)
+        import_page = await client.get("/imports/new", headers={"Cookie": cookie})
+        cookie = _updated_cookie(import_page, cookie)
+        imported = await client.post(
+            "/imports",
+            body=urlencode(
+                {
+                    "title": "First cut",
+                    "transcript": _SESSION,
+                    "_csrf_token": _csrf(import_page.text),
+                }
+            ).encode(),
+            headers={"Content-Type": "application/x-www-form-urlencoded", "Cookie": cookie},
+        )
+        editor_path = imported.header("location")
+        editor = await client.get(editor_path, headers={"Cookie": cookie})
+        cookie = _updated_cookie(editor, cookie)
+        saved = await client.post(
+            editor_path,
+            body=urlencode(
+                {
+                    "title": "Directed cut",
+                    "description": "A deliberately edited lesson.",
+                    "event_1_include": "on",
+                    "event_1_duration": "4.5",
+                    "event_2_include": "on",
+                    "event_2_duration": "5.5",
+                    "event_3_duration": "2.5",
+                    "chapter_0_name": "The useful opening",
+                    "chapter_0_at": "0",
+                    "chapter_0_caption": "Start with the learner's question",
+                    "chapter_0_note": "The omitted tool event was not instructional.",
+                    "chapter_0_teaching_point": "Editing is subtraction.",
+                    "_csrf_token": _csrf(editor.text),
+                }
+            ).encode(),
+            headers={"Content-Type": "application/x-www-form-urlencoded", "Cookie": cookie},
+        )
+        assert saved.status == 303
+        directed = await client.get(saved.header("location"), headers={"Cookie": cookie})
+        preview = await client.get(editor_path.removesuffix("/edit"), headers={"Cookie": cookie})
+
+    assert "r2" in directed.text
+    assert "Directed cut" in directed.text
+    assert "Revision saved" in directed.text
+    assert "Directed cut" in preview.text
+    assert 'Event <span x-text="activeEvent.id"></span> of 2' in preview.text
 
 
 def test_app_passes_chirp_contract_check(tmp_path: Path) -> None:

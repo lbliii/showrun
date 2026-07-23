@@ -274,6 +274,44 @@ class ShowrunStore:
             raise RuntimeError("Draft was not persisted")
         return result
 
+    async def find_duplicate(self, workspace_id: str, source_sha256: str) -> LessonRecord | None:
+        return await self.db.fetch_one(
+            LessonRecord,
+            "SELECT l.id, l.recording_id, l.workspace_id, l.title, l.description, "
+            "l.status, l.visibility, l.revision, l.manifest_json, l.created_at, "
+            "l.updated_at, l.published_at FROM lessons l "
+            "JOIN recordings r ON r.id = l.recording_id "
+            "WHERE l.workspace_id = ? AND r.source_sha256 = ? LIMIT 1",
+            workspace_id,
+            source_sha256,
+        )
+
+    async def update_lesson(
+        self,
+        lesson_id: str,
+        *,
+        workspace_id: str,
+        artifact: ShowrunArtifact,
+    ) -> LessonRecord:
+        now = _now()
+        changed = await self.db.execute(
+            "UPDATE lessons SET title = ?, description = ?, manifest_json = ?, "
+            "revision = revision + 1, status = 'draft', visibility = 'private', "
+            "updated_at = ? WHERE id = ? AND workspace_id = ?",
+            artifact.title,
+            artifact.description,
+            artifact.to_json(),
+            now,
+            lesson_id,
+            workspace_id,
+        )
+        if not changed:
+            raise LookupError("Lesson not found")
+        lesson = await self.get_lesson(lesson_id, workspace_id=workspace_id)
+        if lesson is None:
+            raise RuntimeError("Lesson update was not persisted")
+        return lesson
+
     async def seed_golden(self, artifact: ShowrunArtifact) -> None:
         if await self.get_lesson("lesson_golden") is not None:
             return

@@ -15,7 +15,7 @@ from chirp.http.response import Response
 from chirp.middleware.auth import current_user, login, logout
 from chirp.templating.returns import MutationResult, Page
 
-from showrun.artifacts import ShowrunArtifact, create_artifact_from_text
+from showrun.artifacts import ShowrunArtifact, create_artifact_from_text, direct_artifact
 from showrun.auth import (
     LoginThrottle,
     issue_token,
@@ -24,11 +24,19 @@ from showrun.auth import (
     validate_name,
     verify_password,
 )
-from showrun.store import ReleaseRecord, ShowrunStore, UserRecord
+from showrun.store import LessonRecord, ReleaseRecord, ShowrunStore, UserRecord
 
 
 def _redirect(path: str) -> Response:
     return Response("", status=303, headers=(("Location", path),))
+
+
+def _json_response(payload: dict[str, Any], *, status: int = 200) -> Response:
+    return Response(
+        json.dumps(payload, ensure_ascii=False),
+        status=status,
+        content_type="application/json; charset=utf-8",
+    )
 
 
 def _base_url(request: Request) -> str:
@@ -92,7 +100,18 @@ class ShowrunRoutes:
         )(self.revoke_token)
         self.app.route("/imports/new", name="imports.new")(self.import_page)
         self.app.route("/imports", methods=["POST"], name="imports.create")(self.import_session)
+        self.app.route(
+            "/api/v1/imports",
+            methods=["POST"],
+            name="api.imports.create",
+        )(self.api_import_session)
         self.app.route("/lessons/{lesson_id}", name="lessons.show")(self.lesson_page)
+        self.app.route("/lessons/{lesson_id}/edit", name="lessons.edit")(self.edit_lesson_page)
+        self.app.route(
+            "/lessons/{lesson_id}/edit",
+            methods=["POST"],
+            name="lessons.update",
+        )(self.update_lesson)
         self.app.route(
             "/lessons/{lesson_id}/publish",
             methods=["POST"],
@@ -114,6 +133,14 @@ class ShowrunRoutes:
     def require_user(self) -> tuple[UserRecord | None, Response | None]:
         user = self.browser_user()
         return (user, None) if user is not None else (None, _redirect("/login"))
+
+    def require_api_scope(self, scope: str) -> tuple[UserRecord | None, Response | None]:
+        user = self.user()
+        if user is None:
+            return None, _json_response({"error": "A valid bearer token is required."}, status=401)
+        if scope not in user.scopes:
+            return None, _json_response({"error": f"Token needs the {scope} scope."}, status=403)
+        return user, None
 
     async def library(self) -> Page:
         user = self.browser_user()
@@ -300,12 +327,132 @@ class ShowrunRoutes:
             artifact = create_artifact_from_text(transcript, filename=filename, title=title)
         except ValueError as exc:
             return Page("import.html", "page_root", error=str(exc))
+        digest = hashlib.sha256(transcript.encode()).hexdigest()
+        duplicate = await self.store.find_duplicate(user.workspace_id, digest)
+        if duplicate is not None:
+            return MutationResult(f"/lessons/{duplicate.id}/edit")
         lesson = await self.store.create_draft(
             artifact,
             workspace_id=user.workspace_id,
-            source_sha256=hashlib.sha256(transcript.encode()).hexdigest(),
+            source_sha256=digest,
         )
-        return MutationResult(f"/lessons/{lesson.id}")
+        return MutationResult(f"/lessons/{lesson.id}/edit")
+
+    async def api_import_session(self, request: Request) -> Response:
+        user, denied = self.require_api_scope("imports:write")
+        if denied or user is None:
+            return denied or _json_response({"error": "Unauthorized"}, status=401)
+        try:
+            payload = await request.json()
+        except json.JSONDecodeError, UnicodeDecodeError, ValueError:
+            return _json_response({"error": "Send a JSON request body."}, status=400)
+        if not isinstance(payload, dict):
+            return _json_response({"error": "The request body must be a JSON object."}, status=400)
+        transcript = str(payload.get("transcript") or "")
+        filename = str(payload.get("filename") or "session.jsonl")[:255]
+        title = str(payload.get("title") or "")
+        if not transcript:
+            return _json_response({"error": "transcript is required."}, status=422)
+        try:
+            artifact = create_artifact_from_text(transcript, filename=filename, title=title)
+        except ValueError as exc:
+            return _json_response({"error": str(exc)}, status=422)
+        digest = hashlib.sha256(transcript.encode()).hexdigest()
+        lesson = await self.store.find_duplicate(user.workspace_id, digest)
+        duplicate = lesson is not None
+        if lesson is None:
+            lesson = await self.store.create_draft(
+                artifact,
+                workspace_id=user.workspace_id,
+                source_sha256=digest,
+            )
+        return _json_response(
+            {
+                "duplicate": duplicate,
+                "lesson_id": lesson.id,
+                "lesson_url": f"/lessons/{lesson.id}/edit",
+                "warnings": list(lesson.artifact.warnings),
+            },
+            status=200 if duplicate else 201,
+        )
+
+    async def edit_lesson_page(
+        self,
+        lesson_id: str,
+        request: Request,
+    ) -> Page | Response:
+        user, denied = self.require_user()
+        if denied or user is None:
+            return denied or _redirect("/login")
+        lesson = await self.store.get_lesson(lesson_id, workspace_id=user.workspace_id)
+        if lesson is None:
+            return Response("Lesson not found", status=404, content_type="text/plain")
+        return self._editor_page(
+            lesson,
+            error="",
+            saved=str(request.query.get("saved") or "") == "1",
+        )
+
+    def _editor_page(
+        self,
+        lesson: LessonRecord,
+        *,
+        error: str,
+        saved: bool = False,
+    ) -> Page:
+        return Page(
+            "editor.html",
+            "page_root",
+            artifact=lesson.artifact,
+            error=error,
+            lesson=lesson,
+            saved=saved,
+        )
+
+    async def update_lesson(self, request: Request, lesson_id: str) -> Page | Response:
+        user, denied = self.require_user()
+        if denied or user is None:
+            return denied or _redirect("/login")
+        lesson = await self.store.get_lesson(lesson_id, workspace_id=user.workspace_id)
+        if lesson is None:
+            return Response("Lesson not found", status=404, content_type="text/plain")
+        form = await request.form()
+        artifact = lesson.artifact
+        included_ids = {
+            event.id
+            for event in artifact.events
+            if str(form.get(f"event_{event.id}_include") or "")
+        }
+        durations = {
+            event.id: str(form.get(f"event_{event.id}_duration") or "") for event in artifact.events
+        }
+        chapters = tuple(
+            {
+                "name": str(form.get(f"chapter_{index}_name") or ""),
+                "at": str(form.get(f"chapter_{index}_at") or ""),
+                "caption": str(form.get(f"chapter_{index}_caption") or ""),
+                "note": str(form.get(f"chapter_{index}_note") or ""),
+                "teaching_point": str(form.get(f"chapter_{index}_teaching_point") or ""),
+            }
+            for index, _chapter in enumerate(artifact.chapters)
+        )
+        try:
+            directed = direct_artifact(
+                artifact,
+                title=str(form.get("title") or ""),
+                description=str(form.get("description") or ""),
+                included_event_ids=included_ids,
+                event_durations=durations,
+                chapter_values=chapters,
+            )
+        except ValueError as exc:
+            return self._editor_page(lesson, error=str(exc))
+        await self.store.update_lesson(
+            lesson_id,
+            workspace_id=user.workspace_id,
+            artifact=directed,
+        )
+        return _redirect(f"/lessons/{lesson_id}/edit?saved=1")
 
     async def lesson_page(self, lesson_id: str) -> Page | Response:
         user, denied = self.require_user()

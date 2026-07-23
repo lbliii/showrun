@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import re
 import shlex
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass, replace
 from pathlib import Path
 from typing import Any
@@ -169,6 +170,82 @@ def create_artifact_from_text(
         duration=duration,
         description="Automatically directed from an imported agent session.",
         warnings=warnings,
+    )
+
+
+def direct_artifact(
+    artifact: ShowrunArtifact,
+    *,
+    title: str,
+    description: str,
+    included_event_ids: set[int],
+    event_durations: Mapping[int, str | float],
+    chapter_values: tuple[dict[str, str], ...],
+) -> ShowrunArtifact:
+    """Apply the small director surface while preserving sanitized source metadata."""
+
+    clean_title = " ".join(title.split())[:120]
+    if not clean_title:
+        raise ValueError("Give the lesson a title.")
+    clean_description = description.strip()[:500]
+
+    events: list[TraceEvent] = []
+    cursor = 0.0
+    for source_event in artifact.events:
+        if source_event.id not in included_event_ids:
+            continue
+        try:
+            duration = round(float(event_durations[source_event.id]), 1)
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"Event {source_event.id} needs a valid duration.") from exc
+        if not 1 <= duration <= 60:
+            raise ValueError(f"Event {source_event.id} duration must be between 1 and 60 seconds.")
+        events.append(
+            replace(
+                source_event,
+                id=len(events) + 1,
+                at=round(cursor, 1),
+                duration=duration,
+            )
+        )
+        cursor += duration + (0.4 if source_event.kind == "tool" else 0.7)
+    if not events:
+        raise ValueError("Keep at least one event in the lesson.")
+
+    duration = round(events[-1].at + events[-1].duration + 1.5, 1)
+    chapters: list[Chapter] = []
+    for index, values in enumerate(chapter_values, 1):
+        name = " ".join(values.get("name", "").split())[:80]
+        if not name:
+            raise ValueError(f"Chapter {index} needs a name.")
+        try:
+            at = round(float(values.get("at", "0")), 1)
+        except ValueError as exc:
+            raise ValueError(f"Chapter {index} needs a valid start time.") from exc
+        if not 0 <= at < duration:
+            raise ValueError(f"Chapter {index} must start between 0 and {duration:.1f} seconds.")
+        chapters.append(
+            Chapter(
+                name=name,
+                at=at,
+                caption=values.get("caption", "").strip()[:160],
+                note=values.get("note", "").strip()[:1000],
+                teaching_point=values.get("teaching_point", "").strip()[:500],
+            )
+        )
+    if not chapters:
+        raise ValueError("Keep at least one chapter.")
+    chapters.sort(key=lambda chapter: chapter.at)
+    if chapters[0].at != 0:
+        chapters[0] = replace(chapters[0], at=0)
+
+    return replace(
+        artifact,
+        title=clean_title,
+        description=clean_description,
+        events=tuple(events),
+        chapters=tuple(chapters),
+        duration=duration,
     )
 
 
