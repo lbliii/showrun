@@ -1,4 +1,4 @@
-{% extends "chirpui/app_layout.html" %}
+{% extends "layout.html" %}
 
 {% block title %}Import a session · Showrun{% end %}
 
@@ -9,7 +9,7 @@
 
 {% block content %}
 {% block page_root %}
-<main class="import-shell" hx-boost="false">
+<div class="import-shell">
   <header class="library-nav">
     <a class="brand" href="/">
       <span class="brand-mark">SR</span>
@@ -35,7 +35,6 @@
       action="/imports"
       method="post"
       enctype="multipart/form-data"
-      hx-boost="false"
     >
       {{ csrf_field() }}
       {% if error %}<div class="form-error">{{ error }}</div>{% endif %}
@@ -54,6 +53,6 @@
       <small>Maximum 2 MB. Nothing is published automatically.</small>
     </form>
   </section>
-</main>
+</div>
 {% end %}
 {% end %}

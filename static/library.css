@@ -161,6 +161,23 @@ a {
   text-transform: uppercase;
 }
 
+.showrun-badge {
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 9px;
+  border: 1px solid #55a77a;
+  border-radius: 999px;
+  background: transparent;
+  color: #176b43;
+  font-family: var(--font-geist-mono, ui-monospace), monospace;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 .hero-action {
   min-height: 52px;
   gap: 32px;

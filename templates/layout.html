@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="{% block lang %}en{% end %}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f2f0e9">
+  <title>{% block title %}Showrun{% end %}</title>
+  {% block head_extra %}{% end %}
+</head>
+<body>
+  <main id="main">
+    <div id="page-content">
+      {% block content %}{% end %}
+    </div>
+  </main>
+</body>
+</html>

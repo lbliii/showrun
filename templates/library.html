@@ -1,5 +1,4 @@
-{% extends "chirpui/app_layout.html" %}
-{% from "chirpui/badge.html" import badge %}
+{% extends "layout.html" %}
 
 {% block title %}Your library · Showrun{% end %}
 
@@ -10,7 +9,7 @@
 
 {% block content %}
 {% block page_root %}
-<main class="library-shell" hx-boost="false">
+<div class="library-shell">
   <header class="library-nav">
     <a class="brand" href="/">
       <span class="brand-mark">SR</span>
@@ -19,7 +18,7 @@
     <nav>
       {% if admin %}
       <a class="library-button secondary" href="/imports/new">Import session</a>
-      <form action="/logout" method="post" hx-boost="false">
+      <form action="/logout" method="post">
         {{ csrf_field() }}
         <button class="quiet-button">Sign out</button>
       </form>
@@ -46,7 +45,7 @@
         <p class="eyebrow">{% if admin %}Your workspace{% else %}Public screenings{% endif %}</p>
         <h2>{% if admin %}Shows and drafts{% else %}Published shows{% endif %}</h2>
       </div>
-      {{ badge((lessons | length) ~ " titles", variant="success") }}
+      <span class="showrun-badge">{{ lessons | length }} titles</span>
     </div>
 
     {% if lessons %}
@@ -75,6 +74,6 @@
     </div>
     {% endif %}
   </section>
-</main>
+</div>
 {% end %}
 {% end %}

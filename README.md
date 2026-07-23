@@ -29,7 +29,7 @@ ships as the first public release.
 
 - Python 3.14 and `uv`
 - Chirp and Pounce
-- Kida and Chirp UI
+- Kida with Showrun-owned templates and CSS
 - Patitas and Rosettes
 - Alpine.js
 - SQLite for local development

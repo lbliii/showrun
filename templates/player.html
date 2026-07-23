@@ -1,6 +1,4 @@
-{% extends "chirpui/app_layout.html" %}
-{% from "chirpui/badge.html" import badge %}
-{% from "chirpui/button.html" import btn %}
+{% extends "layout.html" %}
 {% from "components.html" import event_card, trace_row %}
 
 {% block title %}{{ title }} · Showrun{% end %}
@@ -23,9 +21,8 @@
 {% block page_root %}
 <script id="showrun-player-config" type="application/json">{{ player_config | tojson }}</script>
 
-<main
+<div
   class="app-shell{% if embed %} embed-mode{% endif %}"
-  hx-boost="false"
   x-data="showrunPlayer('showrun-player-config')"
   x-init="init()"
   x-cloak
@@ -41,7 +38,7 @@
       <span class="prototype-tag">dvd/1 · {{ state }}</span>
     </a>
     <div class="topbar-actions">
-      {{ badge("Chirp + Kida", variant="success", cls="stack-badge") }}
+      <span class="showrun-badge stack-badge">Chirp + Kida</span>
       <span class="source-pill">
         <span class="live-dot"></span>
         {{ source_format }}
@@ -210,7 +207,6 @@
         class="publish-form"
         action="/lessons/{{ lesson_id }}/publish"
         method="post"
-        hx-boost="false"
       >
         {{ csrf_field() }}
         <label for="visibility">Release visibility</label>
@@ -221,7 +217,7 @@
         <button class="edit-button" type="submit">Publish this revision <span>→</span></button>
       </form>
       {% elif canonical_url %}
-      {{ btn("Open watch page", href=canonical_url, variant="secondary", size="sm", cls="download-button") }}
+      <a class="download-button" href="{{ canonical_url }}">Open watch page</a>
       {% endif %}
     </aside>
   </section>
@@ -245,11 +241,11 @@
 
   <footer>
     <span>Showrun turns agent runs into shows people can learn from.</span>
-    <span>Chirp · Kida · Chirp UI · Patitas · Rosettes</span>
+    <span>Chirp · Kida · Patitas · Rosettes</span>
   </footer>
   {% endif %}
 
   <div class="toast" x-show="toast" x-transition x-text="toast"></div>
-</main>
+</div>
 {% end %}
 {% end %}

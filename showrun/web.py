@@ -8,7 +8,6 @@ from pathlib import Path
 
 from chirp.app import App
 from chirp.config import AppConfig
-from chirp.ext.chirp_ui import use_chirp_ui
 from chirp.markdown import register_markdown_filter
 from chirp.middleware.security_headers import SecurityHeadersConfig
 from chirp.middleware.stack import secure_stack
@@ -36,7 +35,11 @@ def create_app(
         template_dir=TEMPLATES,
         static_dir=STATIC,
         debug=os.environ.get("CHIRP_ENV", "development") == "development",
-        htmx=True,
+        alpine=True,
+        csp_nonce_enabled=True,
+        htmx=False,
+        safe_target=False,
+        sse_lifecycle=False,
         worker_mode="async",
         workers=1,
     )
@@ -56,12 +59,9 @@ def create_app(
         f"sqlite:///{ROOT / 'showrun.db'}",
     )
     application = App(config, db=resolved_database_url, migrations=str(MIGRATIONS))
-    use_chirp_ui(application)
     register_markdown_filter(application)
-    # Chirp UI enables the per-request nonce CSP. Keep the remaining security
-    # headers, but do not append the static fallback CSP as a second policy:
-    # browsers enforce duplicate policies together, which would reject the
-    # otherwise-valid nonced Alpine and Chirp bootstrap scripts.
+    # Chirp owns the nonce-protected Alpine runtime. Keep the remaining
+    # production headers without appending a second, conflicting CSP policy.
     headers = SecurityHeadersConfig(content_security_policy=None)
     for middleware in secure_stack(application.config, headers=headers):
         application.add_middleware(middleware)
