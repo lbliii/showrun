@@ -324,6 +324,34 @@ a {
   color: var(--muted);
 }
 
+.metric-strip {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  margin-bottom: 36px;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+}
+
+.metric-strip > div {
+  display: grid;
+  gap: 3px;
+  padding: 16px;
+  background: var(--paper);
+}
+
+.metric-strip strong {
+  font-size: 28px;
+}
+
+.metric-strip span {
+  color: var(--muted);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 @media (max-width: 900px) {
   .library-hero {
     grid-template-columns: 1fr;
@@ -360,6 +388,10 @@ a {
 
   .show-grid {
     grid-template-columns: 1fr;
+  }
+
+  .metric-strip {
+    grid-template-columns: repeat(2, 1fr);
   }
 
 }

@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import stat
 from pathlib import Path
+from urllib.request import Request
 
 import pytest
 
+import showrun.cli
 from showrun.cli import main
 
 _SESSION = """\
@@ -53,3 +56,77 @@ def test_both_installed_entry_points_target_the_same_cli() -> None:
 
     assert 'showrun = "showrun.cli:main"' in pyproject
     assert 'sr = "showrun.cli:main"' in pyproject
+
+
+def test_login_saves_private_credentials(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    config = tmp_path / "config.json"
+    monkeypatch.setenv("SHOWRUN_CONFIG", str(config))
+    token = "sr_live_" + "a" * 44
+
+    assert main(["login", "--host", "https://showrun.example/", "--token", token]) == 0
+
+    assert json.loads(config.read_text()) == {
+        "host": "https://showrun.example",
+        "token": token,
+    }
+    assert stat.S_IMODE(config.stat().st_mode) == 0o600
+    assert token not in capsys.readouterr().out
+
+
+def test_push_uses_saved_credentials_and_prints_editor_url(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    session = tmp_path / "session.jsonl"
+    session.write_text(_SESSION, encoding="utf-8")
+    config = tmp_path / "config.json"
+    config.write_text(
+        json.dumps(
+            {
+                "host": "https://showrun.example",
+                "token": "sr_live_" + "b" * 44,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("SHOWRUN_CONFIG", str(config))
+    captured: dict[str, object] = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self):
+            return json.dumps(
+                {
+                    "lesson_url": "/lessons/lesson_123/edit",
+                    "duplicate": False,
+                    "warnings": ["Potential credentials were redacted locally."],
+                }
+            ).encode()
+
+    def fake_urlopen(request: Request, timeout: int):
+        captured["request"] = request
+        captured["timeout"] = timeout
+        return FakeResponse()
+
+    monkeypatch.setattr(showrun.cli, "urlopen", fake_urlopen)
+
+    assert main(["push", str(session), "--title", "CLI upload"]) == 0
+    output = capsys.readouterr().out
+    request = captured["request"]
+
+    assert isinstance(request, Request)
+    assert request.full_url == "https://showrun.example/api/v1/imports"
+    assert request.get_header("Authorization", "").startswith("Bearer sr_live_")
+    assert json.loads(request.data or b"{}")["title"] == "CLI upload"
+    assert "https://showrun.example/lessons/lesson_123/edit" in output
+    assert "warning:" in output

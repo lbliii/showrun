@@ -54,6 +54,7 @@ def _player_context(
     embed: bool = False,
     canonical_url: str = "",
     manifest_url: str = "",
+    embed_code: str = "",
 ) -> dict[str, Any]:
     return {
         "canonical_url": canonical_url,
@@ -61,6 +62,7 @@ def _player_context(
         "description": artifact.description,
         "duration": artifact.duration,
         "embed": embed,
+        "embed_code": embed_code,
         "events": artifact.events,
         "lesson_id": lesson_id,
         "manage": manage,
@@ -148,7 +150,14 @@ class ShowrunRoutes:
             workspace_id=user.workspace_id if user else None,
             public_only=user is None,
         )
-        return Page("library.html", "page_root", user=user, lessons=lessons)
+        metrics = await self.store.usage_metrics(user.workspace_id) if user else None
+        return Page(
+            "library.html",
+            "page_root",
+            user=user,
+            lessons=lessons,
+            metrics=metrics,
+        )
 
     async def login_page(self) -> Page:
         return Page(
@@ -275,6 +284,7 @@ class ShowrunRoutes:
             token_prefix=prefix,
             token_hash=digest,
         )
+        await self.store.record_usage("token.created", workspace_id=user.workspace_id)
         return Page(
             "tokens.html",
             "page_root",
@@ -336,6 +346,12 @@ class ShowrunRoutes:
             workspace_id=user.workspace_id,
             source_sha256=digest,
         )
+        await self.store.record_usage(
+            "lesson.imported",
+            workspace_id=user.workspace_id,
+            lesson_id=lesson.id,
+            properties={"source_format": artifact.source_format, "channel": "browser"},
+        )
         return MutationResult(f"/lessons/{lesson.id}/edit")
 
     async def api_import_session(self, request: Request) -> Response:
@@ -365,6 +381,12 @@ class ShowrunRoutes:
                 artifact,
                 workspace_id=user.workspace_id,
                 source_sha256=digest,
+            )
+            await self.store.record_usage(
+                "lesson.imported",
+                workspace_id=user.workspace_id,
+                lesson_id=lesson.id,
+                properties={"source_format": artifact.source_format, "channel": "api"},
             )
         return _json_response(
             {
@@ -483,6 +505,14 @@ class ShowrunRoutes:
         form = await request.form()
         visibility = str(form.get("visibility") or "unlisted")
         try:
+            lesson = await self.store.get_lesson(lesson_id, workspace_id=user.workspace_id)
+            if lesson is None:
+                raise LookupError("Lesson not found")
+            existing = await self.store.get_release_for_revision(
+                lesson.id,
+                lesson.revision,
+                visibility,
+            )
             release = await self.store.publish(
                 lesson_id,
                 visibility,
@@ -492,6 +522,14 @@ class ShowrunRoutes:
             return Response(str(exc), status=422, content_type="text/plain")
         except LookupError:
             return Response("Lesson not found", status=404, content_type="text/plain")
+        if existing is None:
+            await self.store.record_usage(
+                "lesson.published",
+                workspace_id=user.workspace_id,
+                lesson_id=lesson_id,
+                release_id=release.id,
+                properties={"visibility": release.visibility, "revision": release.revision},
+            )
         return MutationResult(f"/watch/{release.slug}")
 
     async def _release(self, slug: str) -> ReleaseRecord | Response:
@@ -506,6 +544,18 @@ class ShowrunRoutes:
             return release
         base_url = _base_url(request)
         canonical = f"{base_url}/watch/{release.slug}"
+        embed_url = f"{base_url}/embed/{release.slug}"
+        embed_code = (
+            f'<iframe src="{embed_url}" '
+            f'title="{html.escape(release.artifact.title, quote=True)}" '
+            'loading="lazy" style="width:100%;aspect-ratio:16/9;border:0" '
+            "allowfullscreen></iframe>"
+        )
+        await self.store.record_usage(
+            "release.viewed",
+            lesson_id=release.lesson_id,
+            release_id=release.id,
+        )
         return Page(
             "player.html",
             "page_root",
@@ -514,6 +564,7 @@ class ShowrunRoutes:
                 state=f"release r{release.revision}",
                 canonical_url=canonical,
                 manifest_url=f"/releases/{release.slug}/dvd.json",
+                embed_code=embed_code,
             ),
         )
 
@@ -522,6 +573,11 @@ class ShowrunRoutes:
         if isinstance(release, Response):
             return release
         base_url = _base_url(request)
+        await self.store.record_usage(
+            "release.embedded",
+            lesson_id=release.lesson_id,
+            release_id=release.id,
+        )
         return Page(
             "player.html",
             "page_root",
@@ -537,6 +593,11 @@ class ShowrunRoutes:
         release = await self.store.get_release(slug)
         if release is None:
             return Response("Showrun not found", status=404, content_type="text/plain")
+        await self.store.record_usage(
+            "release.manifest_downloaded",
+            lesson_id=release.lesson_id,
+            release_id=release.id,
+        )
         return Response(
             release.manifest_json,
             content_type="application/json; charset=utf-8",

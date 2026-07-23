@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -47,6 +48,14 @@ class ApiTokenRecord:
     created_at: str
     last_used_at: str | None
     revoked_at: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class UsageMetrics:
+    imports: int = 0
+    publishes: int = 0
+    views: int = 0
+    embeds: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -228,6 +237,50 @@ class ShowrunStore:
             digest,
         )
 
+    async def record_usage(
+        self,
+        event_name: str,
+        *,
+        workspace_id: str | None = None,
+        lesson_id: str | None = None,
+        release_id: str | None = None,
+        properties: dict[str, str | int | float | bool] | None = None,
+    ) -> None:
+        resolved_workspace = workspace_id
+        if resolved_workspace is None and lesson_id is not None:
+            resolved_workspace = await self.db.fetch_val(
+                "SELECT workspace_id FROM lessons WHERE id = ?",
+                lesson_id,
+            )
+        await self.db.execute(
+            "INSERT INTO usage_events "
+            "(id, workspace_id, lesson_id, release_id, event_name, properties_json, "
+            "occurred_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            f"usage_{uuid4().hex}",
+            resolved_workspace,
+            lesson_id,
+            release_id,
+            event_name,
+            json.dumps(properties or {}, ensure_ascii=False, separators=(",", ":")),
+            _now(),
+        )
+
+    async def usage_metrics(self, workspace_id: str) -> UsageMetrics:
+        async def count(name: str) -> int:
+            value = await self.db.fetch_val(
+                "SELECT COUNT(*) FROM usage_events WHERE workspace_id = ? AND event_name = ?",
+                workspace_id,
+                name,
+            )
+            return int(value or 0)
+
+        return UsageMetrics(
+            imports=await count("lesson.imported"),
+            publishes=await count("lesson.published"),
+            views=await count("release.viewed"),
+            embeds=await count("release.embedded"),
+        )
+
     async def create_draft(
         self,
         artifact: ShowrunArtifact,
@@ -371,6 +424,21 @@ class ShowrunStore:
             slug,
         )
 
+    async def get_release_for_revision(
+        self,
+        lesson_id: str,
+        revision: int,
+        visibility: str,
+    ) -> ReleaseRecord | None:
+        return await self.db.fetch_one(
+            ReleaseRecord,
+            "SELECT id, lesson_id, revision, slug, visibility, manifest_json, published_at "
+            "FROM releases WHERE lesson_id = ? AND revision = ? AND visibility = ?",
+            lesson_id,
+            revision,
+            visibility,
+        )
+
     async def publish(
         self,
         lesson_id: str,
@@ -383,10 +451,7 @@ class ShowrunStore:
         lesson = await self.get_lesson(lesson_id, workspace_id=workspace_id)
         if lesson is None:
             raise LookupError("Lesson not found")
-        existing = await self.db.fetch_one(
-            ReleaseRecord,
-            "SELECT id, lesson_id, revision, slug, visibility, manifest_json, published_at "
-            "FROM releases WHERE lesson_id = ? AND revision = ? AND visibility = ?",
+        existing = await self.get_release_for_revision(
             lesson.id,
             lesson.revision,
             visibility,

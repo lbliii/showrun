@@ -153,17 +153,23 @@ async def test_director_can_import_preview_publish_and_embed(tmp_path: Path) -> 
         embed = await client.get(f"/embed/{slug}")
         manifest = await client.get(f"/releases/{slug}/dvd.json")
         oembed = await client.get(f"/oembed?url=http://testserver/watch/{slug}")
+        dashboard = await client.get("/", headers={"Cookie": cookie})
 
     assert "A published Showrun" in lesson.text
     assert "Publish this revision" in lesson.text
     assert watch.status == embed.status == manifest.status == oembed.status == 200
     assert "showrunPlayer" in watch.text
+    assert "Copy embed" in watch.text
     assert "embed-mode" in embed.text
     assert 'data-chirp="alpine"' in watch.text
     assert "chirpui" not in watch.text.lower()
     assert manifest.header("cache-control") == "public, max-age=31536000, immutable"
     assert json.loads(manifest.text)["format"] == "dvd/1"
     assert f"/embed/{slug}" in json.loads(oembed.text)["html"]
+    assert "<strong>1</strong><span>imports</span>" in dashboard.text
+    assert "<strong>1</strong><span>publishes</span>" in dashboard.text
+    assert "<strong>1</strong><span>watch views</span>" in dashboard.text
+    assert "<strong>1</strong><span>embed loads</span>" in dashboard.text
 
 
 async def test_draft_persists_across_restart(tmp_path: Path) -> None:

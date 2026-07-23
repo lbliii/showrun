@@ -47,6 +47,12 @@
         class="quiet-button"
         @click="navigator.clipboard.writeText(window.location.href); notify('Share link copied')"
       >Share</button>
+      {% if embed_code %}
+      <button
+        class="quiet-button"
+        @click="navigator.clipboard.writeText({{ embed_code | tojson }}); notify('Embed code copied')"
+      >Copy embed</button>
+      {% endif %}
       {% if manifest_url %}
       <a class="export-button" href="{{ manifest_url }}">Download .dvd <span>↗</span></a>
       {% endif %}

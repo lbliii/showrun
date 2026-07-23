@@ -42,6 +42,14 @@
   </section>
 
   <section class="library-section">
+    {% if user %}
+    <div class="metric-strip" aria-label="Workspace activity">
+      <div><strong>{{ metrics.imports }}</strong><span>imports</span></div>
+      <div><strong>{{ metrics.publishes }}</strong><span>publishes</span></div>
+      <div><strong>{{ metrics.views }}</strong><span>watch views</span></div>
+      <div><strong>{{ metrics.embeds }}</strong><span>embed loads</span></div>
+    </div>
+    {% endif %}
     <div class="section-heading">
       <div>
         <p class="eyebrow">{% if user %}{{ user.name }}’s workspace{% else %}Public screenings{% endif %}</p>

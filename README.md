@@ -63,10 +63,16 @@ sr --version
 
 showrun inspect ~/.codex/sessions/YYYY/MM/DD/rollout-....jsonl
 showrun import session.jsonl --output lesson.dvd.json
+showrun login --host https://showrun-production.up.railway.app
+showrun push session.jsonl --title "A useful agent workflow"
 showrun serve --port 8000
 ```
 
-`showrun import` works locally and never publishes automatically.
+`showrun import` works locally and never publishes automatically. `showrun
+push` uploads through the same sanitizer as the browser and creates a private
+draft; it never publishes automatically. API tokens are stored with mode
+`0600` in the platform config directory. `SHOWRUN_URL` and `SHOWRUN_TOKEN`
+override saved credentials for CI.
 
 ## Verify
 
