@@ -429,6 +429,79 @@ async def test_director_saves_a_new_revision_and_preserves_release(tmp_path: Pat
     assert 'Event <span x-text="activeEvent.id"></span> of 2' in preview.text
 
 
+async def test_library_can_filter_duplicate_delete_and_unpublish(tmp_path: Path) -> None:
+    app = _application(tmp_path / "library-management.db")
+    async with TestClient(app) as client:
+        cookie = await _signup(client)
+        import_page = await client.get("/imports/new", headers={"Cookie": cookie})
+        cookie = _updated_cookie(import_page, cookie)
+        imported = await client.post(
+            "/imports",
+            body=urlencode(
+                {
+                    "title": "Manage this lesson",
+                    "transcript": _SESSION,
+                    "_csrf_token": _csrf(import_page.text),
+                }
+            ).encode(),
+            headers={"Content-Type": "application/x-www-form-urlencoded", "Cookie": cookie},
+        )
+        editor_path = imported.header("location")
+        lesson_path = editor_path.removesuffix("/edit")
+        library = await client.get("/?q=manage&status=draft", headers={"Cookie": cookie})
+        duplicated = await client.post(
+            f"{lesson_path}/duplicate",
+            body=urlencode({"_csrf_token": _csrf(library.text)}).encode(),
+            headers={"Content-Type": "application/x-www-form-urlencoded", "Cookie": cookie},
+        )
+        duplicate_editor_path = duplicated.header("location")
+        duplicate_lesson_path = duplicate_editor_path.removesuffix("/edit")
+        duplicate_editor = await client.get(duplicate_editor_path, headers={"Cookie": cookie})
+        deleted = await client.post(
+            f"{duplicate_lesson_path}/delete",
+            body=urlencode({"_csrf_token": _csrf(duplicate_editor.text)}).encode(),
+            headers={"Content-Type": "application/x-www-form-urlencoded", "Cookie": cookie},
+        )
+
+        preview = await client.get(lesson_path, headers={"Cookie": cookie})
+        published = await client.post(
+            f"{lesson_path}/publish",
+            body=urlencode(
+                {"visibility": "unlisted", "_csrf_token": _csrf(preview.text)}
+            ).encode(),
+            headers={"Content-Type": "application/x-www-form-urlencoded", "Cookie": cookie},
+        )
+        watch_path = published.header("location")
+        slug = watch_path.rsplit("/", 1)[-1]
+        editor = await client.get(editor_path, headers={"Cookie": cookie})
+        unpublished = await client.post(
+            f"/releases/{slug}/unpublish",
+            body=urlencode({"_csrf_token": _csrf(editor.text)}).encode(),
+            headers={"Content-Type": "application/x-www-form-urlencoded", "Cookie": cookie},
+        )
+        missing_watch = await client.get(watch_path)
+        release_history = await client.get(
+            unpublished.header("location"),
+            headers={"Cookie": cookie},
+        )
+        preview_again = await client.get(lesson_path, headers={"Cookie": cookie})
+        republished = await client.post(
+            f"{lesson_path}/publish",
+            body=urlencode(
+                {"visibility": "unlisted", "_csrf_token": _csrf(preview_again.text)}
+            ).encode(),
+            headers={"Content-Type": "application/x-www-form-urlencoded", "Cookie": cookie},
+        )
+        restored_watch = await client.get(republished.header("location"))
+
+    assert "Manage this lesson" in library.text
+    assert duplicated.status == deleted.status == 303
+    assert missing_watch.status == 404
+    assert "unpublished" in release_history.text
+    assert republished.header("location") == watch_path
+    assert restored_watch.status == 200
+
+
 def test_app_passes_chirp_contract_check(tmp_path: Path) -> None:
     app = _application(tmp_path / "contracts.db")
     app.check()

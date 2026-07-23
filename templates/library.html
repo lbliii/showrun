@@ -59,24 +59,59 @@
       </div>
       <span class="showrun-badge">{{ lessons | length }} titles</span>
     </div>
+    {% if user %}
+    <form class="library-filters" action="/" method="get">
+      <label>
+        <span>Search library</span>
+        <input type="search" name="q" value="{{ query }}" placeholder="Title or description">
+      </label>
+      <label>
+        <span>Status</span>
+        <select name="status">
+          <option value="all"{% if status_filter == "all" %} selected{% endif %}>All titles</option>
+          <option value="draft"{% if status_filter == "draft" %} selected{% endif %}>Drafts</option>
+          <option value="published"{% if status_filter == "published" %} selected{% endif %}>Published</option>
+        </select>
+      </label>
+      <button class="quiet-button" type="submit">Filter</button>
+      {% if query or status_filter != "all" %}<a class="quiet-button" href="/">Clear</a>{% endif %}
+    </form>
+    {% endif %}
 
     {% if lessons %}
     <div class="show-grid">
       {% for lesson in lessons %}
-      <a class="show-card" href="{% if user %}/lessons/{{ lesson.id }}{% else %}/watch/{{ lesson.release_slug }}{% endif %}">
-        <div class="show-cover">
-          <span class="cover-kicker">{{ lesson.event_count }} events</span>
-          <strong>{{ lesson.title }}</strong>
-          <span class="cover-play">▶</span>
-        </div>
+      <article class="show-card">
+        <a class="show-card-link" href="{% if user %}/lessons/{{ lesson.id }}{% else %}/watch/{{ lesson.release_slug }}{% endif %}">
+          <div class="show-cover">
+            <span class="cover-kicker">{{ lesson.event_count }} events · r{{ lesson.revision }}</span>
+            <strong>{{ lesson.title }}</strong>
+            <span class="cover-play">▶</span>
+          </div>
+        </a>
         <div class="show-meta">
           <div>
-            <strong>{{ lesson.title }}</strong>
+            <a href="{% if user %}/lessons/{{ lesson.id }}{% else %}/watch/{{ lesson.release_slug }}{% endif %}"><strong>{{ lesson.title }}</strong></a>
             <small>{{ lesson.description or "Directed agent session" }}</small>
           </div>
           <span class="status status-{{ lesson.status }}">{{ lesson.status }}</span>
         </div>
-      </a>
+        {% if user %}
+        <div class="show-actions">
+          <a class="quiet-button" href="/lessons/{{ lesson.id }}/edit">Rename / edit</a>
+          <form action="/lessons/{{ lesson.id }}/duplicate" method="post">
+            {{ csrf_field() }}
+            <button class="quiet-button" type="submit">Duplicate</button>
+          </form>
+          {% if lesson.release_count == 0 %}
+          <form action="/lessons/{{ lesson.id }}/delete" method="post">
+            {{ csrf_field() }}
+            <button class="quiet-button danger" type="submit">Delete draft</button>
+          </form>
+          {% endif %}
+        </div>
+        {% endif %}
+      </article>
       {% end %}
     </div>
     {% else %}

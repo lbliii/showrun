@@ -6,7 +6,7 @@ import hashlib
 import html
 import json
 import os
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from typing import Any
 
 from chirp.app import App
@@ -154,6 +154,21 @@ class ShowrunRoutes:
             methods=["POST"],
             name="lessons.publish",
         )(self.publish_lesson)
+        self.app.route(
+            "/lessons/{lesson_id}/duplicate",
+            methods=["POST"],
+            name="lessons.duplicate",
+        )(self.duplicate_lesson)
+        self.app.route(
+            "/lessons/{lesson_id}/delete",
+            methods=["POST"],
+            name="lessons.delete",
+        )(self.delete_lesson)
+        self.app.route(
+            "/releases/{slug}/unpublish",
+            methods=["POST"],
+            name="releases.unpublish",
+        )(self.unpublish_release)
         self.app.route("/watch/{slug}", name="releases.watch")(self.watch)
         self.app.route("/embed/{slug}", name="releases.embed")(self.embed)
         self.app.route("/releases/{slug}/dvd.json", name="releases.manifest")(self.release_manifest)
@@ -179,11 +194,17 @@ class ShowrunRoutes:
             return None, _json_response({"error": f"Token needs the {scope} scope."}, status=403)
         return user, None
 
-    async def library(self) -> Page:
+    async def library(self, request: Request) -> Page:
         user = self.browser_user()
+        query = str(request.query.get("q") or "")[:100]
+        status = str(request.query.get("status") or "all")
+        if status not in {"all", "draft", "published"}:
+            status = "all"
         lessons = await self.store.list_lessons(
             workspace_id=user.workspace_id if user else None,
             public_only=user is None,
+            query=query,
+            status=status,
         )
         metrics = await self.store.usage_metrics(user.workspace_id) if user else None
         return Page(
@@ -192,6 +213,8 @@ class ShowrunRoutes:
             user=user,
             lessons=lessons,
             metrics=metrics,
+            query=query,
+            status_filter=status,
         )
 
     async def login_page(self) -> Page:
@@ -506,10 +529,12 @@ class ShowrunRoutes:
         lesson = await self.store.get_lesson(lesson_id, workspace_id=user.workspace_id)
         if lesson is None:
             return Response("Lesson not found", status=404, content_type="text/plain")
+        releases = await self.store.list_releases(lesson.id, workspace_id=user.workspace_id)
         return self._editor_page(
             lesson,
             error="",
             saved=str(request.query.get("saved") or "") == "1",
+            releases=releases,
         )
 
     def _editor_page(
@@ -517,6 +542,7 @@ class ShowrunRoutes:
         lesson: LessonRecord,
         *,
         error: str,
+        releases: list[ReleaseRecord],
         saved: bool = False,
     ) -> Page:
         return Page(
@@ -525,6 +551,7 @@ class ShowrunRoutes:
             artifact=lesson.artifact,
             error=error,
             lesson=lesson,
+            releases=releases,
             saved=saved,
         )
 
@@ -587,13 +614,59 @@ class ShowrunRoutes:
                 event_texts=texts,
             )
         except ValueError as exc:
-            return self._editor_page(lesson, error=str(exc))
+            releases = await self.store.list_releases(lesson.id, workspace_id=user.workspace_id)
+            return self._editor_page(lesson, error=str(exc), releases=releases)
         await self.store.update_lesson(
             lesson_id,
             workspace_id=user.workspace_id,
             artifact=directed,
         )
         return _redirect(f"/lessons/{lesson_id}/edit?saved=1")
+
+    async def duplicate_lesson(self, lesson_id: str) -> MutationResult | Response:
+        user, denied = self.require_user()
+        if denied or user is None:
+            return denied or _redirect("/login")
+        lesson = await self.store.get_lesson(lesson_id, workspace_id=user.workspace_id)
+        if lesson is None:
+            return Response("Lesson not found", status=404, content_type="text/plain")
+        artifact = replace(
+            lesson.artifact,
+            title=f"Copy of {lesson.title}"[:120],
+        )
+        duplicate = await self.store.create_draft(
+            artifact,
+            workspace_id=user.workspace_id,
+            source_sha256=hashlib.sha256(
+                f"{lesson.id}:{os.urandom(16).hex()}".encode()
+            ).hexdigest(),
+        )
+        return MutationResult(f"/lessons/{duplicate.id}/edit")
+
+    async def delete_lesson(self, lesson_id: str) -> MutationResult | Response:
+        user, denied = self.require_user()
+        if denied or user is None:
+            return denied or _redirect("/login")
+        try:
+            await self.store.delete_draft(lesson_id, workspace_id=user.workspace_id)
+        except LookupError:
+            return Response("Lesson not found", status=404, content_type="text/plain")
+        except ValueError as exc:
+            return Response(str(exc), status=409, content_type="text/plain")
+        return MutationResult("/")
+
+    async def unpublish_release(self, slug: str) -> MutationResult | Response:
+        user, denied = self.require_user()
+        if denied or user is None:
+            return denied or _redirect("/login")
+        try:
+            lesson_id = await self.store.unpublish_release(
+                slug,
+                workspace_id=user.workspace_id,
+            )
+        except LookupError:
+            return Response("Release not found", status=404, content_type="text/plain")
+        return MutationResult(f"/lessons/{lesson_id}/edit")
 
     async def lesson_page(self, lesson_id: str) -> Page | Response:
         user, denied = self.require_user()

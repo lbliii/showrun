@@ -46,6 +46,13 @@ body { margin: 0; background: var(--paper); color: var(--ink); font-family: Inte
 .new-chapter { border-style: dashed; background: transparent; }
 .director-actions { position: sticky; bottom: 0; z-index: 4; display: flex; justify-content: space-between; gap: 1rem; align-items: center; padding: 1rem; background: rgba(23, 23, 17, .96); color: white; }
 .director-actions span { color: #ccc; font-size: .85rem; }
+.release-history { display: grid; grid-template-columns: minmax(210px, .6fr) minmax(0, 1.4fr); gap: 2rem; padding: 3rem 70px; border-bottom: 1px solid var(--line); }
+.release-history h2 { margin: .35rem 0; font-size: 2.2rem; }
+.release-list { display: grid; gap: .7rem; }
+.release-list article { display: flex; align-items: center; gap: .7rem; padding: 1rem; border: 1px solid var(--line); background: white; }
+.release-list article > div { display: grid; flex: 1; gap: .25rem; }
+.release-list small { color: var(--muted); }
+.release-list form { margin: 0; }
 
 @media (max-width: 900px) {
   .director-shell { width: min(100% - 1.5rem, 760px); }
@@ -53,6 +60,7 @@ body { margin: 0; background: var(--paper); color: var(--ink); font-family: Inte
   .director-section { grid-template-columns: 40px 1fr; gap: 1rem; }
   .director-section > :last-child { grid-column: 2; }
   .director-actions { align-items: stretch; flex-direction: column; }
+  .release-history { grid-template-columns: 1fr; padding: 3rem 0; }
 }
 
 @media (max-width: 560px) {

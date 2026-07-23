@@ -211,7 +211,7 @@ a {
   gap: 22px;
 }
 
-.show-card {
+.show-card-link {
   display: block;
   color: inherit;
   text-decoration: none;
@@ -287,6 +287,56 @@ a {
   display: block;
 }
 
+.show-meta a {
+  text-decoration: none;
+}
+
+.show-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-bottom: 18px;
+}
+
+.show-actions form {
+  margin: 0;
+}
+
+.quiet-button.danger {
+  border-color: #a13c31;
+  color: #8a251b;
+}
+
+.library-filters {
+  display: flex;
+  align-items: end;
+  gap: 10px;
+  margin: 0 0 28px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  background: var(--card);
+}
+
+.library-filters label {
+  display: grid;
+  flex: 1;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.library-filters label:nth-child(2) {
+  flex: 0 0 180px;
+}
+
+.library-filters input,
+.library-filters select {
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  background: white;
+}
+
 .show-meta small {
   max-width: 330px;
   margin-top: 4px;
@@ -326,7 +376,7 @@ a {
 
 .metric-strip {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 1px;
   margin-bottom: 36px;
   border: 1px solid var(--ink);
@@ -361,6 +411,9 @@ a {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .metric-strip {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 
 @media (max-width: 620px) {
@@ -394,4 +447,12 @@ a {
     grid-template-columns: repeat(2, 1fr);
   }
 
+  .library-filters {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .library-filters label:nth-child(2) {
+    flex-basis: auto;
+  }
 }

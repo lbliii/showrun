@@ -138,6 +138,36 @@
       <button class="hero-action" type="submit">Save directed revision <span>→</span></button>
     </div>
   </form>
+
+  <section class="release-history">
+    <div>
+      <p class="eyebrow">Immutable release history</p>
+      <h2>Screenings</h2>
+    </div>
+    {% if releases %}
+    <div class="release-list">
+      {% for release in releases %}
+      <article>
+        <div>
+          <strong>Revision {{ release.revision }} · {{ release.visibility }}</strong>
+          <small>{{ release.published_at }}{% if release.disabled_at %} · unpublished{% endif %}</small>
+        </div>
+        {% if release.disabled_at %}
+        <span class="status status-draft">unpublished</span>
+        {% else %}
+        <a class="library-button secondary" href="/watch/{{ release.slug }}">Watch</a>
+        <form action="/releases/{{ release.slug }}/unpublish" method="post">
+          {{ csrf_field() }}
+          <button class="quiet-button" type="submit">Unpublish</button>
+        </form>
+        {% endif %}
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p>No releases yet. Preview this revision, then publish when it is ready.</p>
+    {% endif %}
+  </section>
 </div>
 {% end %}
 {% end %}
