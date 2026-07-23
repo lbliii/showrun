@@ -90,6 +90,7 @@ Production needs:
 - `SHOWRUN_ADMIN_TOKEN`
 - `CHIRP_SECRET_KEY`
 - `CHIRP_ENV=production`
+- `RAILPACK_PYTHON_VERSION=3.14`
 
 Raw imported transcripts are not persisted. The current slice stores the
 sanitized `dvd/1` manifest and a source hash in PostgreSQL. Railway object
