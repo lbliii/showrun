@@ -1,0 +1,71 @@
+{% extends "layout.html" %}
+
+{% block title %}API tokens · Showrun{% end %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="/static/library.css">
+<link rel="stylesheet" href="/static/forms.css">
+{% end %}
+
+{% block content %}
+{% block page_root %}
+<div class="library-shell">
+  <header class="library-nav">
+    <a class="brand" href="/">
+      <span class="brand-mark">SR</span>
+      <span>Showrun</span>
+    </a>
+    <nav><a class="library-button secondary" href="/">Back to library</a></nav>
+  </header>
+
+  <section class="settings-grid">
+    <div>
+      <p class="eyebrow">CLI access</p>
+      <h1>API tokens</h1>
+      <p>Tokens can import sessions into {{ user.name }}’s workspace. Store them like passwords.</p>
+    </div>
+    <div class="settings-card">
+      {% if error %}<div class="form-error">{{ error }}</div>{% endif %}
+      {% if plaintext_token %}
+      <div class="token-reveal">
+        <strong>Copy this token now.</strong>
+        <p>It will not be shown again.</p>
+        <code>{{ plaintext_token }}</code>
+      </div>
+      {% endif %}
+      <form action="/settings/tokens" method="post">
+        {{ csrf_field() }}
+        <label for="name">Token name</label>
+        <input id="name" name="name" type="text" maxlength="80" placeholder="My laptop" required>
+        <button class="hero-action" type="submit">Create token <span>→</span></button>
+      </form>
+    </div>
+  </section>
+
+  <section class="library-section">
+    <div class="section-heading">
+      <div><p class="eyebrow">Credentials</p><h2>Your tokens</h2></div>
+    </div>
+    <div class="token-list">
+      {% for token in tokens %}
+      <article class="token-row">
+        <div>
+          <strong>{{ token.name }}</strong>
+          <small><code>{{ token.token_prefix }}…</code> · {{ token.scopes }}</small>
+          {% if token.revoked_at %}<span class="status">revoked</span>{% endif %}
+        </div>
+        {% if not token.revoked_at %}
+        <form action="/settings/tokens/{{ token.id }}/revoke" method="post">
+          {{ csrf_field() }}
+          <button class="quiet-button" type="submit">Revoke</button>
+        </form>
+        {% endif %}
+      </article>
+      {% else %}
+      <p>No API tokens yet.</p>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+{% end %}
+{% end %}

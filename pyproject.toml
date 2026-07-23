@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Turn agent runs into shows people can learn from"
 requires-python = ">=3.14"
 dependencies = [
-  "bengal-chirp[data-pg,forms,markdown,sessions]>=0.10,<0.11",
+  "bengal-chirp[auth,data-pg,forms,markdown,sessions]>=0.10,<0.11",
   "kida-templates>=0.12,<0.13",
   "patitas[syntax]>=0.4,<0.5",
 ]

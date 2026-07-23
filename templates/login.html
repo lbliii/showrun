@@ -17,15 +17,17 @@
   <section class="auth-card">
     <p class="eyebrow">Director access</p>
     <h1>Open your library.</h1>
-    <p>This alpha uses a workspace director token. Hosted account authentication comes in the next identity slice.</p>
+    <p>Sign in to import, direct, publish, and share your agent sessions.</p>
     {% if error %}<div class="form-error">{{ error }}</div>{% endif %}
     <form action="/login" method="post">
       {{ csrf_field() }}
-      <label for="token">Director token</label>
-      <input id="token" name="token" type="password" required autofocus>
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" value="{{ email }}" required autofocus autocomplete="email">
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" required autocomplete="current-password">
       <button class="hero-action" type="submit">Sign in <span>→</span></button>
     </form>
-    {% if local_hint %}<small class="local-hint">Local development token: <code>{{ local_hint }}</code></small>{% endif %}
+    <p class="auth-switch">New to Showrun? <a href="/signup">Create an account</a></p>
   </section>
 </div>
 {% end %}

@@ -9,6 +9,7 @@ from urllib.parse import urlencode
 
 from chirp.testing import TestClient
 
+from showrun.auth import password_hash
 from showrun.web import create_app
 
 _CSRF_RE = re.compile(r'name="_csrf_token" value="([^"]+)"')
@@ -23,7 +24,6 @@ _SESSION = """\
 def _application(database: Path):
     return create_app(
         f"sqlite:///{database}",
-        admin_token="test-director-token",
         secret_key="test-signing-key-with-enough-entropy",
     )
 
@@ -34,20 +34,50 @@ def _cookie(response) -> str:
     return value.split(";", 1)[0]
 
 
+def _updated_cookie(response, current: str) -> str:
+    value = response.header("set-cookie", "")
+    return value.split(";", 1)[0] if value else current
+
+
 def _csrf(html: str) -> str:
     match = _CSRF_RE.search(html)
     assert match is not None
     return match.group(1)
 
 
-async def _login(client: TestClient) -> str:
+async def _signup(
+    client: TestClient,
+    *,
+    email: str = "director@example.com",
+    name: str = "Test Director",
+) -> str:
+    page = await client.get("/signup")
+    cookie = _cookie(page)
+    response = await client.post(
+        "/signup",
+        body=urlencode(
+            {
+                "name": name,
+                "email": email,
+                "password": "correct horse battery staple",
+                "_csrf_token": _csrf(page.text),
+            }
+        ).encode(),
+        headers={"Content-Type": "application/x-www-form-urlencoded", "Cookie": cookie},
+    )
+    assert response.status == 303
+    return response.header("set-cookie", "").split(";", 1)[0] or cookie
+
+
+async def _login(client: TestClient, *, email: str = "director@example.com") -> str:
     page = await client.get("/login")
     cookie = _cookie(page)
     response = await client.post(
         "/login",
         body=urlencode(
             {
-                "token": "test-director-token",
+                "email": email,
+                "password": "correct horse battery staple",
                 "_csrf_token": _csrf(page.text),
             }
         ).encode(),
@@ -83,8 +113,9 @@ async def test_public_library_and_readiness(tmp_path: Path) -> None:
 async def test_director_can_import_preview_publish_and_embed(tmp_path: Path) -> None:
     app = _application(tmp_path / "flow.db")
     async with TestClient(app) as client:
-        cookie = await _login(client)
+        cookie = await _signup(client)
         import_page = await client.get("/imports/new", headers={"Cookie": cookie})
+        cookie = _updated_cookie(import_page, cookie)
         imported = await client.post(
             "/imports",
             body=urlencode(
@@ -134,8 +165,9 @@ async def test_draft_persists_across_restart(tmp_path: Path) -> None:
     database = tmp_path / "persistent.db"
     first_app = _application(database)
     async with TestClient(first_app) as client:
-        cookie = await _login(client)
+        cookie = await _signup(client)
         import_page = await client.get("/imports/new", headers={"Cookie": cookie})
+        cookie = _updated_cookie(import_page, cookie)
         response = await client.post(
             "/imports",
             body=urlencode(
@@ -167,6 +199,67 @@ async def test_private_routes_redirect_to_login(tmp_path: Path) -> None:
     assert import_page.header("location") == lesson.header("location") == "/login"
 
 
+async def test_workspaces_are_isolated_and_tokens_are_revocable(tmp_path: Path) -> None:
+    app = _application(tmp_path / "isolation.db")
+    async with TestClient(app) as client:
+        first_cookie = await _signup(client)
+        import_page = await client.get("/imports/new", headers={"Cookie": first_cookie})
+        first_cookie = _updated_cookie(import_page, first_cookie)
+        imported = await client.post(
+            "/imports",
+            body=urlencode(
+                {
+                    "title": "Private to workspace one",
+                    "transcript": _SESSION,
+                    "_csrf_token": _csrf(import_page.text),
+                }
+            ).encode(),
+            headers={"Content-Type": "application/x-www-form-urlencoded", "Cookie": first_cookie},
+        )
+        lesson_path = imported.header("location")
+
+        token_page = await client.get("/settings/tokens", headers={"Cookie": first_cookie})
+        first_cookie = _updated_cookie(token_page, first_cookie)
+        created = await client.post(
+            "/settings/tokens",
+            body=urlencode(
+                {
+                    "name": "Test laptop",
+                    "_csrf_token": _csrf(token_page.text),
+                }
+            ).encode(),
+            headers={"Content-Type": "application/x-www-form-urlencoded", "Cookie": first_cookie},
+        )
+        token_match = re.search(r"<code>(sr_live_[^<]+)</code>", created.text)
+        assert token_match is not None
+        plaintext_token = token_match.group(1)
+        assert plaintext_token not in created.text.replace(token_match.group(0), "")
+
+        logout_page = await client.get("/", headers={"Cookie": first_cookie})
+        logged_out = await client.post(
+            "/logout",
+            body=urlencode({"_csrf_token": _csrf(logout_page.text)}).encode(),
+            headers={"Content-Type": "application/x-www-form-urlencoded", "Cookie": first_cookie},
+        )
+        anonymous_cookie = logged_out.header("set-cookie", "").split(";", 1)[0]
+        second_cookie = await _signup(
+            client,
+            email="other@example.com",
+            name="Other Director",
+        )
+        denied = await client.get(lesson_path, headers={"Cookie": second_cookie})
+        second_library = await client.get("/", headers={"Cookie": second_cookie})
+
+    assert anonymous_cookie
+    assert denied.status == 404
+    assert "Private to workspace one" not in second_library.text
+    assert plaintext_token.startswith("sr_live_")
+
+
 def test_app_passes_chirp_contract_check(tmp_path: Path) -> None:
     app = _application(tmp_path / "contracts.db")
     app.check()
+
+
+def test_passwords_use_argon2id() -> None:
+    assert password_hash("correct horse battery staple").startswith("$argon2id$")

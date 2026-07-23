@@ -16,14 +16,16 @@
       <span>Showrun</span>
     </a>
     <nav>
-      {% if admin %}
+      {% if user %}
       <a class="library-button secondary" href="/imports/new">Import session</a>
+      <a class="quiet-button" href="/settings/tokens">API tokens</a>
       <form action="/logout" method="post">
         {{ csrf_field() }}
         <button class="quiet-button">Sign out</button>
       </form>
       {% else %}
-      <a class="library-button" href="/login">Director sign in</a>
+      <a class="quiet-button" href="/login">Sign in</a>
+      <a class="library-button" href="/signup">Create your library</a>
       {% endif %}
     </nav>
   </header>
@@ -34,7 +36,7 @@
       <h1>Turn agent runs into shows people can learn from.</h1>
       <p>Import a session, let Showrun direct the first cut, then publish a stable watch page or documentation embed.</p>
     </div>
-    {% if admin %}
+    {% if user %}
     <a class="hero-action" href="/imports/new">Import your first run <span>→</span></a>
     {% endif %}
   </section>
@@ -42,8 +44,8 @@
   <section class="library-section">
     <div class="section-heading">
       <div>
-        <p class="eyebrow">{% if admin %}Your workspace{% else %}Public screenings{% endif %}</p>
-        <h2>{% if admin %}Shows and drafts{% else %}Published shows{% endif %}</h2>
+        <p class="eyebrow">{% if user %}{{ user.name }}’s workspace{% else %}Public screenings{% endif %}</p>
+        <h2>{% if user %}Shows and drafts{% else %}Published shows{% endif %}</h2>
       </div>
       <span class="showrun-badge">{{ lessons | length }} titles</span>
     </div>
@@ -51,7 +53,7 @@
     {% if lessons %}
     <div class="show-grid">
       {% for lesson in lessons %}
-      <a class="show-card" href="{% if admin %}/lessons/{{ lesson.id }}{% else %}/watch/{{ lesson.release_slug }}{% endif %}">
+      <a class="show-card" href="{% if user %}/lessons/{{ lesson.id }}{% else %}/watch/{{ lesson.release_slug }}{% endif %}">
         <div class="show-cover">
           <span class="cover-kicker">{{ lesson.event_count }} events</span>
           <strong>{{ lesson.title }}</strong>

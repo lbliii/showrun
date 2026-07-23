@@ -3,22 +3,28 @@
 from __future__ import annotations
 
 import hashlib
-import hmac
 import html
 import json
 from typing import Any
 
 from chirp.app import App
+from chirp.data import QueryError
 from chirp.http.forms import UploadFile
 from chirp.http.request import Request
 from chirp.http.response import Response
-from chirp.middleware.sessions import get_session
+from chirp.middleware.auth import current_user, login, logout
 from chirp.templating.returns import MutationResult, Page
 
 from showrun.artifacts import ShowrunArtifact, create_artifact_from_text
-from showrun.store import ReleaseRecord, ShowrunStore
-
-LOCAL_TOKEN = "showrun-local"
+from showrun.auth import (
+    LoginThrottle,
+    issue_token,
+    normalize_email,
+    password_hash,
+    validate_name,
+    verify_password,
+)
+from showrun.store import ReleaseRecord, ShowrunStore, UserRecord
 
 
 def _redirect(path: str) -> Response:
@@ -61,16 +67,29 @@ def _player_context(
 class ShowrunRoutes:
     """Bind focused request handlers to a configured Chirp application."""
 
-    def __init__(self, application: App, store: ShowrunStore, admin_token: str) -> None:
+    def __init__(self, application: App, store: ShowrunStore) -> None:
         self.app = application
         self.store = store
-        self.admin_token = admin_token
+        self.login_throttle = LoginThrottle()
 
     def register(self) -> None:
         self.app.route("/", name="library")(self.library)
         self.app.route("/login", name="login")(self.login_page)
         self.app.route("/login", methods=["POST"], name="login.submit")(self.login)
+        self.app.route("/signup", name="signup")(self.signup_page)
+        self.app.route("/signup", methods=["POST"], name="signup.submit")(self.signup)
         self.app.route("/logout", methods=["POST"], name="logout")(self.logout)
+        self.app.route("/settings/tokens", name="tokens.index")(self.tokens_page)
+        self.app.route(
+            "/settings/tokens",
+            methods=["POST"],
+            name="tokens.create",
+        )(self.create_token)
+        self.app.route(
+            "/settings/tokens/{token_id}/revoke",
+            methods=["POST"],
+            name="tokens.revoke",
+        )(self.revoke_token)
         self.app.route("/imports/new", name="imports.new")(self.import_page)
         self.app.route("/imports", methods=["POST"], name="imports.create")(self.import_session)
         self.app.route("/lessons/{lesson_id}", name="lessons.show")(self.lesson_page)
@@ -84,52 +103,177 @@ class ShowrunRoutes:
         self.app.route("/releases/{slug}/dvd.json", name="releases.manifest")(self.release_manifest)
         self.app.route("/oembed", name="oembed")(self.oembed)
 
-    def is_admin(self) -> bool:
-        return get_session().get("showrun_admin") is True
+    def user(self) -> UserRecord | None:
+        user = current_user()
+        return user if isinstance(user, UserRecord) else None
 
-    def require_admin(self) -> Response | None:
-        return None if self.is_admin() else _redirect("/login")
+    def browser_user(self) -> UserRecord | None:
+        user = self.user()
+        return user if user is not None and not user.scopes else None
+
+    def require_user(self) -> tuple[UserRecord | None, Response | None]:
+        user = self.browser_user()
+        return (user, None) if user is not None else (None, _redirect("/login"))
 
     async def library(self) -> Page:
-        admin = self.is_admin()
-        lessons = await self.store.list_lessons(public_only=not admin)
-        return Page("library.html", "page_root", admin=admin, lessons=lessons)
+        user = self.browser_user()
+        lessons = await self.store.list_lessons(
+            workspace_id=user.workspace_id if user else None,
+            public_only=user is None,
+        )
+        return Page("library.html", "page_root", user=user, lessons=lessons)
 
     async def login_page(self) -> Page:
         return Page(
             "login.html",
             "page_root",
             error="",
-            local_hint=LOCAL_TOKEN if self.app.config.env == "development" else "",
+            email="",
         )
 
     async def login(self, request: Request) -> MutationResult | Page:
         form = await request.form()
-        token = str(form.get("token") or "")
-        if not hmac.compare_digest(token, self.admin_token):
+        raw_email = str(form.get("email") or "")
+        password = str(form.get("password") or "")
+        key = request.client[0] if request.client else "unknown"
+        if not self.login_throttle.allow(f"login:{key}"):
             return Page(
                 "login.html",
                 "page_root",
-                error="That director token is not valid.",
-                local_hint=LOCAL_TOKEN if self.app.config.env == "development" else "",
+                error="Too many sign-in attempts. Wait a few minutes and try again.",
+                email=raw_email,
             )
-        get_session()["showrun_admin"] = True
+        try:
+            email = normalize_email(raw_email)
+        except ValueError:
+            email = raw_email.strip().lower()
+        user = await self.store.get_user_by_email(email)
+        if user is None or not verify_password(password, user.password_hash if user else None):
+            return Page(
+                "login.html",
+                "page_root",
+                error="Email or password is not correct.",
+                email=raw_email,
+            )
+        login(user)
         return MutationResult("/")
 
     async def logout(self) -> MutationResult:
-        get_session().pop("showrun_admin", None)
+        logout()
         return MutationResult("/")
 
+    async def signup_page(self) -> Page:
+        return Page("signup.html", "page_root", error="", email="", name="")
+
+    async def signup(self, request: Request) -> MutationResult | Page:
+        form = await request.form()
+        raw_email = str(form.get("email") or "")
+        raw_name = str(form.get("name") or "")
+        raw_password = str(form.get("password") or "")
+        key = request.client[0] if request.client else "unknown"
+        if not self.login_throttle.allow(f"signup:{key}"):
+            return Page(
+                "signup.html",
+                "page_root",
+                error="Too many account attempts. Wait a few minutes and try again.",
+                email=raw_email,
+                name=raw_name,
+            )
+        try:
+            email = normalize_email(raw_email)
+            name = validate_name(raw_name)
+            hashed = password_hash(raw_password)
+        except ValueError as exc:
+            return Page(
+                "signup.html",
+                "page_root",
+                error=str(exc),
+                email=raw_email,
+                name=raw_name,
+            )
+        if await self.store.get_user_by_email(email) is not None:
+            return Page(
+                "signup.html",
+                "page_root",
+                error="An account with that email already exists.",
+                email=raw_email,
+                name=raw_name,
+            )
+        try:
+            user = await self.store.create_user(email=email, name=name, password_hash=hashed)
+        except QueryError:
+            return Page(
+                "signup.html",
+                "page_root",
+                error="An account with that email already exists.",
+                email=raw_email,
+                name=raw_name,
+            )
+        login(user)
+        return MutationResult("/")
+
+    async def tokens_page(self) -> Page | Response:
+        user, denied = self.require_user()
+        if denied or user is None:
+            return denied or _redirect("/login")
+        tokens = await self.store.list_api_tokens(user)
+        return Page(
+            "tokens.html",
+            "page_root",
+            user=user,
+            tokens=tokens,
+            plaintext_token="",
+            error="",
+        )
+
+    async def create_token(self, request: Request) -> Page | Response:
+        user, denied = self.require_user()
+        if denied or user is None:
+            return denied or _redirect("/login")
+        form = await request.form()
+        name = " ".join(str(form.get("name") or "").split())
+        if not name or len(name) > 80:
+            return Page(
+                "tokens.html",
+                "page_root",
+                user=user,
+                tokens=await self.store.list_api_tokens(user),
+                plaintext_token="",
+                error="Give the token a name of 80 characters or fewer.",
+            )
+        plaintext, prefix, digest = issue_token()
+        await self.store.create_api_token(
+            user=user,
+            name=name,
+            token_prefix=prefix,
+            token_hash=digest,
+        )
+        return Page(
+            "tokens.html",
+            "page_root",
+            user=user,
+            tokens=await self.store.list_api_tokens(user),
+            plaintext_token=plaintext,
+            error="",
+        )
+
+    async def revoke_token(self, token_id: str) -> MutationResult | Response:
+        user, denied = self.require_user()
+        if denied or user is None:
+            return denied or _redirect("/login")
+        await self.store.revoke_api_token(user, token_id)
+        return MutationResult("/settings/tokens")
+
     async def import_page(self) -> Page | Response:
-        denied = self.require_admin()
+        _user, denied = self.require_user()
         if denied:
             return denied
         return Page("import.html", "page_root", error="")
 
     async def import_session(self, request: Request) -> MutationResult | Page | Response:
-        denied = self.require_admin()
-        if denied:
-            return denied
+        user, denied = self.require_user()
+        if denied or user is None:
+            return denied or _redirect("/login")
         form = await request.form()
         title = str(form.get("title") or "").strip()
         pasted = str(form.get("transcript") or "").strip()
@@ -158,15 +302,16 @@ class ShowrunRoutes:
             return Page("import.html", "page_root", error=str(exc))
         lesson = await self.store.create_draft(
             artifact,
+            workspace_id=user.workspace_id,
             source_sha256=hashlib.sha256(transcript.encode()).hexdigest(),
         )
         return MutationResult(f"/lessons/{lesson.id}")
 
     async def lesson_page(self, lesson_id: str) -> Page | Response:
-        denied = self.require_admin()
-        if denied:
-            return denied
-        lesson = await self.store.get_lesson(lesson_id)
+        user, denied = self.require_user()
+        if denied or user is None:
+            return denied or _redirect("/login")
+        lesson = await self.store.get_lesson(lesson_id, workspace_id=user.workspace_id)
         if lesson is None:
             return Response("Lesson not found", status=404, content_type="text/plain")
         return Page(
@@ -185,13 +330,17 @@ class ShowrunRoutes:
         request: Request,
         lesson_id: str,
     ) -> MutationResult | Response:
-        denied = self.require_admin()
-        if denied:
-            return denied
+        user, denied = self.require_user()
+        if denied or user is None:
+            return denied or _redirect("/login")
         form = await request.form()
         visibility = str(form.get("visibility") or "unlisted")
         try:
-            release = await self.store.publish(lesson_id, visibility)
+            release = await self.store.publish(
+                lesson_id,
+                visibility,
+                workspace_id=user.workspace_id,
+            )
         except ValueError as exc:
             return Response(str(exc), status=422, content_type="text/plain")
         except LookupError:

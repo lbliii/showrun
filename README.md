@@ -15,7 +15,8 @@ CLI alias is `sr`. Portable releases use the versioned `dvd/1` artifact format.
 - Local structural filtering and common credential redaction
 - Deterministic reading-time pacing and proposed chapters
 - Persistent draft library
-- Director-token authentication
+- Email/password accounts with isolated workspaces
+- Hashed, revocable API tokens for CLI access
 - Public and unlisted immutable releases
 - Responsive watch and iframe embed pages
 - oEmbed discovery and response
@@ -43,12 +44,11 @@ uv sync --frozen
 uv run python app.py
 ```
 
-Open <http://127.0.0.1:8000>. The local director token is `showrun-local`.
+Open <http://127.0.0.1:8000> and create an account.
 
 To use an explicit local configuration:
 
 ```bash
-SHOWRUN_ADMIN_TOKEN=replace-me \
 CHIRP_SECRET_KEY=replace-with-a-long-random-value \
 uv run python app.py
 ```
@@ -66,8 +66,7 @@ showrun import session.jsonl --output lesson.dvd.json
 showrun serve --port 8000
 ```
 
-`showrun import` works locally and never publishes automatically. Hosted login
-and upload commands come after the deployed API authentication contract.
+`showrun import` works locally and never publishes automatically.
 
 ## Verify
 
@@ -87,7 +86,6 @@ uv build
 Production needs:
 
 - A PostgreSQL service providing `DATABASE_URL`
-- `SHOWRUN_ADMIN_TOKEN`
 - `CHIRP_SECRET_KEY`
 - `CHIRP_ENV=production`
 - `RAILPACK_PYTHON_VERSION=3.14`

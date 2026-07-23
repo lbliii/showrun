@@ -1,0 +1,37 @@
+{% extends "layout.html" %}
+
+{% block title %}Create your account · Showrun{% end %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="/static/library.css">
+<link rel="stylesheet" href="/static/forms.css">
+{% end %}
+
+{% block content %}
+{% block page_root %}
+<div class="auth-shell">
+  <a class="brand" href="/">
+    <span class="brand-mark">SR</span>
+    <span>Showrun</span>
+  </a>
+  <section class="auth-card">
+    <p class="eyebrow">Your screening room</p>
+    <h1>Create your library.</h1>
+    <p>Import agent sessions, direct the useful moments, and publish stable lessons.</p>
+    {% if error %}<div class="form-error">{{ error }}</div>{% endif %}
+    <form action="/signup" method="post">
+      {{ csrf_field() }}
+      <label for="name">Name</label>
+      <input id="name" name="name" type="text" value="{{ name }}" maxlength="80" required autofocus autocomplete="name">
+      <label for="email">Email</label>
+      <input id="email" name="email" type="email" value="{{ email }}" maxlength="254" required autocomplete="email">
+      <label for="password">Password</label>
+      <input id="password" name="password" type="password" minlength="12" maxlength="256" required autocomplete="new-password">
+      <small>Use at least 12 characters.</small>
+      <button class="hero-action" type="submit">Create account <span>→</span></button>
+    </form>
+    <p class="auth-switch">Already directing? <a href="/login">Sign in</a></p>
+  </section>
+</div>
+{% end %}
+{% end %}

@@ -27,9 +27,33 @@ class LessonCard:
 
 
 @dataclass(frozen=True, slots=True)
+class UserRecord:
+    id: str
+    workspace_id: str
+    email: str
+    name: str
+    password_hash: str
+    created_at: str
+    is_authenticated: bool = True
+    scopes: frozenset[str] = frozenset()
+
+
+@dataclass(frozen=True, slots=True)
+class ApiTokenRecord:
+    id: str
+    name: str
+    token_prefix: str
+    scopes: str
+    created_at: str
+    last_used_at: str | None
+    revoked_at: str | None
+
+
+@dataclass(frozen=True, slots=True)
 class LessonRecord:
     id: str
     recording_id: str
+    workspace_id: str | None
     title: str
     description: str
     status: str
@@ -75,10 +99,140 @@ class ShowrunStore:
     def __init__(self, database: Any) -> None:
         self.db = database
 
+    async def create_user(
+        self,
+        *,
+        email: str,
+        name: str,
+        password_hash: str,
+    ) -> UserRecord:
+        now = _now()
+        user_id = f"user_{uuid4().hex}"
+        workspace_id = f"workspace_{uuid4().hex}"
+        async with self.db.transaction():
+            await self.db.execute(
+                "INSERT INTO workspaces (id, name, created_at) VALUES (?, ?, ?)",
+                workspace_id,
+                f"{name}'s workspace",
+                now,
+            )
+            await self.db.execute(
+                "INSERT INTO users "
+                "(id, workspace_id, email, name, password_hash, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                user_id,
+                workspace_id,
+                email,
+                name,
+                password_hash,
+                now,
+            )
+        user = await self.get_user(user_id)
+        if user is None:
+            raise RuntimeError("Account was not persisted")
+        return user
+
+    async def get_user(self, user_id: str) -> UserRecord | None:
+        return await self.db.fetch_one(
+            UserRecord,
+            "SELECT id, workspace_id, email, name, password_hash, created_at "
+            "FROM users WHERE id = ?",
+            user_id,
+        )
+
+    async def get_user_by_email(self, email: str) -> UserRecord | None:
+        return await self.db.fetch_one(
+            UserRecord,
+            "SELECT id, workspace_id, email, name, password_hash, created_at "
+            "FROM users WHERE email = ?",
+            email,
+        )
+
+    async def get_user_by_token_hash(self, digest: str) -> tuple[UserRecord, str] | None:
+        token = await self.db.fetch_one(
+            _TokenUserRow,
+            "SELECT u.id, u.workspace_id, u.email, u.name, u.password_hash, u.created_at, "
+            "t.scopes FROM api_tokens t JOIN users u ON u.id = t.user_id "
+            "WHERE t.token_hash = ? AND t.revoked_at IS NULL",
+            digest,
+        )
+        if token is None:
+            return None
+        return (
+            UserRecord(
+                id=token.id,
+                workspace_id=token.workspace_id,
+                email=token.email,
+                name=token.name,
+                password_hash=token.password_hash,
+                created_at=token.created_at,
+            ),
+            token.scopes,
+        )
+
+    async def create_api_token(
+        self,
+        *,
+        user: UserRecord,
+        name: str,
+        token_prefix: str,
+        token_hash: str,
+        scopes: str = "imports:write",
+    ) -> ApiTokenRecord:
+        token_id = f"token_{uuid4().hex}"
+        now = _now()
+        await self.db.execute(
+            "INSERT INTO api_tokens "
+            "(id, user_id, workspace_id, name, token_prefix, token_hash, scopes, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            token_id,
+            user.id,
+            user.workspace_id,
+            name,
+            token_prefix,
+            token_hash,
+            scopes,
+            now,
+        )
+        result = await self.db.fetch_one(
+            ApiTokenRecord,
+            "SELECT id, name, token_prefix, scopes, created_at, last_used_at, revoked_at "
+            "FROM api_tokens WHERE id = ?",
+            token_id,
+        )
+        if result is None:
+            raise RuntimeError("API token was not persisted")
+        return result
+
+    async def list_api_tokens(self, user: UserRecord) -> list[ApiTokenRecord]:
+        return await self.db.fetch(
+            ApiTokenRecord,
+            "SELECT id, name, token_prefix, scopes, created_at, last_used_at, revoked_at "
+            "FROM api_tokens WHERE user_id = ? ORDER BY created_at DESC",
+            user.id,
+        )
+
+    async def revoke_api_token(self, user: UserRecord, token_id: str) -> None:
+        await self.db.execute(
+            "UPDATE api_tokens SET revoked_at = ? "
+            "WHERE id = ? AND user_id = ? AND revoked_at IS NULL",
+            _now(),
+            token_id,
+            user.id,
+        )
+
+    async def touch_api_token(self, digest: str) -> None:
+        await self.db.execute(
+            "UPDATE api_tokens SET last_used_at = ? WHERE token_hash = ? AND revoked_at IS NULL",
+            _now(),
+            digest,
+        )
+
     async def create_draft(
         self,
         artifact: ShowrunArtifact,
         *,
+        workspace_id: str | None = None,
         source_sha256: str | None = None,
         recording_id: str | None = None,
         lesson_id: str | None = None,
@@ -90,8 +244,8 @@ class ShowrunStore:
         digest = source_sha256 or hashlib.sha256(manifest_json.encode()).hexdigest()
         await self.db.execute(
             "INSERT INTO recordings "
-            "(id, session_id, title, source_format, source_sha256, event_count, created_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            "(id, session_id, title, source_format, source_sha256, event_count, created_at, "
+            "workspace_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
             resolved_recording_id,
             artifact.session_id,
             artifact.title,
@@ -99,12 +253,13 @@ class ShowrunStore:
             digest,
             len(artifact.events),
             now,
+            workspace_id,
         )
         await self.db.execute(
             "INSERT INTO lessons "
             "(id, recording_id, title, description, status, visibility, revision, "
-            "manifest_json, created_at, updated_at) "
-            "VALUES (?, ?, ?, ?, 'draft', 'private', 1, ?, ?, ?)",
+            "manifest_json, created_at, updated_at, workspace_id) "
+            "VALUES (?, ?, ?, ?, 'draft', 'private', 1, ?, ?, ?, ?)",
             resolved_lesson_id,
             resolved_recording_id,
             artifact.title,
@@ -112,6 +267,7 @@ class ShowrunStore:
             manifest_json,
             now,
             now,
+            workspace_id,
         )
         result = await self.get_lesson(resolved_lesson_id)
         if result is None:
@@ -127,8 +283,20 @@ class ShowrunStore:
             lesson_id="lesson_golden",
         )
 
-    async def list_lessons(self, *, public_only: bool = False) -> list[LessonCard]:
-        where = " WHERE l.status = 'published' AND l.visibility = 'public'" if public_only else ""
+    async def list_lessons(
+        self,
+        *,
+        workspace_id: str | None = None,
+        public_only: bool = False,
+    ) -> list[LessonCard]:
+        params: tuple[str, ...] = ()
+        if public_only:
+            where = " WHERE l.status = 'published' AND l.visibility = 'public'"
+        elif workspace_id is not None:
+            where = " WHERE l.workspace_id = ?"
+            params = (workspace_id,)
+        else:
+            where = ""
         return await self.db.fetch(
             LessonCard,
             "SELECT l.id, l.title, l.description, l.status, l.visibility, l.revision, "
@@ -137,15 +305,24 @@ class ShowrunStore:
             "ORDER BY rr.published_at DESC LIMIT 1) AS release_slug "
             "FROM lessons l JOIN recordings r ON r.id = l.recording_id"
             f"{where} ORDER BY l.updated_at DESC, l.id ASC",
+            *params,
         )
 
-    async def get_lesson(self, lesson_id: str) -> LessonRecord | None:
+    async def get_lesson(
+        self,
+        lesson_id: str,
+        *,
+        workspace_id: str | None = None,
+    ) -> LessonRecord | None:
+        ownership = " AND workspace_id = ?" if workspace_id is not None else ""
+        params = (lesson_id, workspace_id) if workspace_id is not None else (lesson_id,)
         return await self.db.fetch_one(
             LessonRecord,
-            "SELECT id, recording_id, title, description, status, visibility, revision, "
+            "SELECT id, recording_id, workspace_id, title, description, status, visibility, "
+            "revision, "
             "manifest_json, created_at, updated_at, published_at "
-            "FROM lessons WHERE id = ?",
-            lesson_id,
+            f"FROM lessons WHERE id = ?{ownership}",
+            *params,
         )
 
     async def get_release(self, slug: str) -> ReleaseRecord | None:
@@ -156,10 +333,16 @@ class ShowrunStore:
             slug,
         )
 
-    async def publish(self, lesson_id: str, visibility: str) -> ReleaseRecord:
+    async def publish(
+        self,
+        lesson_id: str,
+        visibility: str,
+        *,
+        workspace_id: str | None = None,
+    ) -> ReleaseRecord:
         if visibility not in {"unlisted", "public"}:
             raise ValueError("Published visibility must be unlisted or public")
-        lesson = await self.get_lesson(lesson_id)
+        lesson = await self.get_lesson(lesson_id, workspace_id=workspace_id)
         if lesson is None:
             raise LookupError("Lesson not found")
         existing = await self.db.fetch_one(
@@ -204,3 +387,14 @@ class ShowrunStore:
             lesson.id,
         )
         return release
+
+
+@dataclass(frozen=True, slots=True)
+class _TokenUserRow:
+    id: str
+    workspace_id: str
+    email: str
+    name: str
+    password_hash: str
+    created_at: str
+    scopes: str
