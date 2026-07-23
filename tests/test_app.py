@@ -160,6 +160,10 @@ async def test_director_can_import_preview_publish_and_embed(tmp_path: Path) -> 
     assert watch.status == embed.status == manifest.status == oembed.status == 200
     assert "showrunPlayer" in watch.text
     assert "Copy embed" in watch.text
+    assert "navigator.clipboard.writeText($el.dataset.embedCode)" in watch.text
+    assert 'data-embed-code="&lt;iframe' in watch.text
+    assert f"/embed/{slug}" in watch.text
+    assert "navigator.clipboard.writeText(&#34;" not in watch.text
     assert "embed-mode" in embed.text
     assert 'data-chirp="alpine"' in watch.text
     assert "chirpui" not in watch.text.lower()

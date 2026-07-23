@@ -50,7 +50,8 @@
       {% if embed_code %}
       <button
         class="quiet-button"
-        @click="navigator.clipboard.writeText({{ embed_code | tojson }}); notify('Embed code copied')"
+        data-embed-code="{{ embed_code }}"
+        @click="navigator.clipboard.writeText($el.dataset.embedCode); notify('Embed code copied')"
       >Copy embed</button>
       {% endif %}
       {% if manifest_url %}
