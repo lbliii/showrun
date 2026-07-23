@@ -368,6 +368,8 @@ async def test_director_saves_a_new_revision_and_preserves_release(tmp_path: Pat
                     "event_2_include": "on",
                     "event_2_duration": "5.5",
                     "event_3_duration": "2.5",
+                    "chapter_0_include": "on",
+                    "chapter_0_order": "1",
                     "chapter_0_name": "The useful opening",
                     "chapter_0_at": "0",
                     "chapter_0_caption": "Start with the learner's question",

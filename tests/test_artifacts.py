@@ -8,6 +8,7 @@ from showrun.artifacts import (
     FORMAT_VERSION,
     artifact_from_json,
     create_artifact_from_text,
+    direct_artifact,
 )
 from showrun.importers import parse_session_text
 
@@ -105,6 +106,51 @@ def test_manifest_round_trip_is_stable() -> None:
 
     assert restored == artifact
     assert restored.to_json() == artifact.to_json()
+
+
+def test_director_reorders_and_rewrites_events_and_chapters() -> None:
+    artifact = create_artifact_from_text(CANONICAL)
+
+    directed = direct_artifact(
+        artifact,
+        title="  A directed lesson ",
+        description="Teach the useful path.",
+        included_event_ids={1, 2},
+        event_durations={1: "3", 2: "4"},
+        event_orders={1: "2", 2: "1"},
+        event_pauses={1: "1.5", 2: "2"},
+        event_labels={1: "Learner question", 2: "Core answer"},
+        event_texts={1: "Where do we begin?", 2: "Begin with the recording."},
+        chapter_values=(
+            {
+                "include": "",
+                "order": "1",
+                "name": "Removed",
+                "at": "0",
+            },
+            {
+                "include": "on",
+                "order": "2",
+                "name": "Conclusion",
+                "at": "5",
+                "caption": "Finish",
+            },
+            {
+                "include": "on",
+                "order": "1",
+                "name": "New opening",
+                "at": "2",
+                "caption": "Start",
+            },
+        ),
+    )
+
+    assert [event.label for event in directed.events] == ["Core answer", "Learner question"]
+    assert directed.events[0].text == "Begin with the recording."
+    assert directed.events[0].pause_after == 2
+    assert directed.events[1].at == 6
+    assert [chapter.name for chapter in directed.chapters] == ["New opening", "Conclusion"]
+    assert directed.chapters[0].at == 0
 
 
 def test_import_ignores_only_an_incomplete_final_record() -> None:

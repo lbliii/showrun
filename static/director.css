@@ -31,15 +31,19 @@ body { margin: 0; background: var(--paper); color: var(--ink); font-family: Inte
 .event-tool { border-left-color: #8a6bd1; }
 .event-editor-top, .chapter-grid { display: flex; justify-content: space-between; gap: 1rem; align-items: center; }
 .event-editor-top label { display: flex; align-items: center; gap: .55rem; margin: 0; }
-.event-editor-top input[type="number"] { width: 82px; margin: 0; }
+.timing-controls { display: flex; gap: .7rem; }
+.event-editor-top .timing-controls label { display: grid; gap: .2rem; color: var(--muted); font-size: .72rem; text-transform: uppercase; }
+.event-editor-top input[type="number"] { width: 72px; margin: 0; }
 .include-toggle { font-weight: 750; }
-.event-editor-copy { margin-top: 1rem; }
+.event-editor-copy { display: grid; gap: .7rem; margin-top: 1rem; }
 .event-editor-copy > span { display: block; margin-top: .2rem; color: var(--muted); font: .75rem ui-monospace, monospace; }
-.event-editor-copy p { margin: .8rem 0 0; line-height: 1.55; white-space: pre-wrap; }
+.event-editor-copy label { margin: 0; }
 .chapter-editor { display: grid; gap: .8rem; }
-.chapter-editor-heading { display: flex; gap: .7rem; padding-bottom: .65rem; border-bottom: 1px solid var(--line); }
+.chapter-editor-heading { display: flex; justify-content: space-between; gap: .7rem; padding-bottom: .65rem; border-bottom: 1px solid var(--line); }
 .chapter-editor-heading span { font: .75rem ui-monospace, monospace; color: var(--muted); }
-.chapter-grid label { flex: 1; }
+.chapter-grid label { flex: 1; min-width: 0; }
+.chapter-grid label:first-child { flex: 0 0 80px; }
+.new-chapter { border-style: dashed; background: transparent; }
 .director-actions { position: sticky; bottom: 0; z-index: 4; display: flex; justify-content: space-between; gap: 1rem; align-items: center; padding: 1rem; background: rgba(23, 23, 17, .96); color: white; }
 .director-actions span { color: #ccc; font-size: .85rem; }
 
@@ -52,6 +56,7 @@ body { margin: 0; background: var(--paper); color: var(--ink); font-family: Inte
 }
 
 @media (max-width: 560px) {
-  .event-editor-top, .chapter-grid { align-items: stretch; flex-direction: column; }
+  .event-editor-top, .chapter-grid, .timing-controls { align-items: stretch; flex-direction: column; }
   .event-editor-top label { justify-content: space-between; width: 100%; }
+  .event-editor-top input[type="number"], .chapter-grid label:first-child { width: 100%; flex-basis: auto; }
 }

@@ -27,6 +27,7 @@ class TraceEvent:
     meta: str = ""
     code: str = ""
     raw_preview: str = ""
+    pause_after: float = 0.7
 
 
 @dataclass(frozen=True, slots=True)
@@ -106,8 +107,11 @@ def apply_smart_pacing(events: tuple[TraceEvent, ...]) -> tuple[TraceEvent, ...]
     cursor = 0.0
     for event in events:
         duration = _reading_duration(event)
-        directed.append(replace(event, at=round(cursor, 1), duration=duration))
-        cursor += duration + (0.4 if event.kind == "tool" else 0.7)
+        pause_after = 0.4 if event.kind == "tool" else 0.7
+        directed.append(
+            replace(event, at=round(cursor, 1), duration=duration, pause_after=pause_after)
+        )
+        cursor += duration + pause_after
     return tuple(directed)
 
 
@@ -181,6 +185,10 @@ def direct_artifact(
     included_event_ids: set[int],
     event_durations: Mapping[int, str | float],
     chapter_values: tuple[dict[str, str], ...],
+    event_orders: Mapping[int, str | int] | None = None,
+    event_pauses: Mapping[int, str | float] | None = None,
+    event_labels: Mapping[int, str] | None = None,
+    event_texts: Mapping[int, str] | None = None,
 ) -> ShowrunArtifact:
     """Apply the small director surface while preserving sanitized source metadata."""
 
@@ -189,32 +197,64 @@ def direct_artifact(
         raise ValueError("Give the lesson a title.")
     clean_description = description.strip()[:500]
 
-    events: list[TraceEvent] = []
-    cursor = 0.0
-    for source_event in artifact.events:
+    event_orders = event_orders or {}
+    event_pauses = event_pauses or {}
+    event_labels = event_labels or {}
+    event_texts = event_texts or {}
+    selected: list[tuple[float, int, TraceEvent]] = []
+    for source_index, source_event in enumerate(artifact.events):
         if source_event.id not in included_event_ids:
             continue
+        raw_order = event_orders.get(source_event.id, source_index + 1)
+        try:
+            order = float(raw_order) if str(raw_order).strip() else float(source_index + 1)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Event {source_event.id} needs a valid order.") from exc
+        selected.append((order, source_index, source_event))
+    selected.sort(key=lambda item: (item[0], item[1]))
+
+    events: list[TraceEvent] = []
+    cursor = 0.0
+    for _order, _source_index, source_event in selected:
         try:
             duration = round(float(event_durations[source_event.id]), 1)
         except (KeyError, TypeError, ValueError) as exc:
             raise ValueError(f"Event {source_event.id} needs a valid duration.") from exc
         if not 1 <= duration <= 60:
             raise ValueError(f"Event {source_event.id} duration must be between 1 and 60 seconds.")
+        raw_pause = event_pauses.get(source_event.id, source_event.pause_after)
+        try:
+            pause_after = round(float(raw_pause), 1) if str(raw_pause).strip() else 0.0
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Event {source_event.id} needs a valid pause.") from exc
+        if not 0 <= pause_after <= 30:
+            raise ValueError(f"Event {source_event.id} pause must be between 0 and 30 seconds.")
+        label = " ".join(event_labels.get(source_event.id, source_event.label).split())[:80]
+        text = event_texts.get(source_event.id, source_event.text).strip()[:10000]
+        if not label:
+            raise ValueError(f"Event {source_event.id} needs a label.")
+        if not text:
+            raise ValueError(f"Event {source_event.id} needs content.")
         events.append(
             replace(
                 source_event,
                 id=len(events) + 1,
                 at=round(cursor, 1),
                 duration=duration,
+                pause_after=pause_after,
+                label=label,
+                text=text,
             )
         )
-        cursor += duration + (0.4 if source_event.kind == "tool" else 0.7)
+        cursor += duration + pause_after
     if not events:
         raise ValueError("Keep at least one event in the lesson.")
 
     duration = round(events[-1].at + events[-1].duration + 1.5, 1)
-    chapters: list[Chapter] = []
+    ordered_chapters: list[tuple[float, int, Chapter]] = []
     for index, values in enumerate(chapter_values, 1):
+        if not values.get("include"):
+            continue
         name = " ".join(values.get("name", "").split())[:80]
         if not name:
             raise ValueError(f"Chapter {index} needs a name.")
@@ -224,18 +264,28 @@ def direct_artifact(
             raise ValueError(f"Chapter {index} needs a valid start time.") from exc
         if not 0 <= at < duration:
             raise ValueError(f"Chapter {index} must start between 0 and {duration:.1f} seconds.")
-        chapters.append(
-            Chapter(
-                name=name,
-                at=at,
-                caption=values.get("caption", "").strip()[:160],
-                note=values.get("note", "").strip()[:1000],
-                teaching_point=values.get("teaching_point", "").strip()[:500],
+        raw_order = values.get("order", str(index))
+        try:
+            order = float(raw_order) if raw_order.strip() else float(index)
+        except ValueError as exc:
+            raise ValueError(f"Chapter {index} needs a valid order.") from exc
+        ordered_chapters.append(
+            (
+                order,
+                index,
+                Chapter(
+                    name=name,
+                    at=at,
+                    caption=values.get("caption", "").strip()[:160],
+                    note=values.get("note", "").strip()[:1000],
+                    teaching_point=values.get("teaching_point", "").strip()[:500],
+                ),
             )
         )
+    ordered_chapters.sort(key=lambda item: (item[0], item[1]))
+    chapters = [item[2] for item in ordered_chapters]
     if not chapters:
         raise ValueError("Keep at least one chapter.")
-    chapters.sort(key=lambda chapter: chapter.at)
     if chapters[0].at != 0:
         chapters[0] = replace(chapters[0], at=0)
 

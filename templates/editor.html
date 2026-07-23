@@ -66,7 +66,7 @@
       <div>
         <p class="eyebrow">Source review</p>
         <h2>Choose the moments</h2>
-        <p>Uncheck anything that does not teach. Set how long viewers need to read it.</p>
+        <p>Cut, reorder, rename, and pace every moment. Tool output stays collapsed in the player.</p>
       </div>
       <div class="event-editor-list">
         {% for event in artifact.events %}
@@ -76,15 +76,16 @@
               <input type="checkbox" name="event_{{ event.id }}_include" checked>
               <span>Keep event {{ event.id }}</span>
             </label>
-            <label>
-              <span>Seconds</span>
-              <input name="event_{{ event.id }}_duration" type="number" min="1" max="60" step="0.1" value="{{ event.duration }}" required>
-            </label>
+            <div class="timing-controls">
+              <label><span>Order</span><input name="event_{{ event.id }}_order" type="number" min="1" step="1" value="{{ loop.index }}" required></label>
+              <label><span>Read</span><input name="event_{{ event.id }}_duration" type="number" min="1" max="60" step="0.1" value="{{ event.duration }}" required></label>
+              <label><span>Pause</span><input name="event_{{ event.id }}_pause" type="number" min="0" max="30" step="0.1" value="{{ event.pause_after }}" required></label>
+            </div>
           </div>
           <div class="event-editor-copy">
-            <strong>{{ event.label }}</strong>
             <span>{{ event.kind }} · source {{ event.source_at | round(1) }}s</span>
-            <p>{{ event.text }}</p>
+            <label>On-screen label<input name="event_{{ event.id }}_label" value="{{ event.label }}" maxlength="80" required></label>
+            <label>On-screen content<textarea name="event_{{ event.id }}_text" rows="4" maxlength="10000" required>{{ event.text }}</textarea></label>
           </div>
         </article>
         {% endfor %}
@@ -101,8 +102,12 @@
       <div class="chapter-editor-list">
         {% for chapter in artifact.chapters %}
         <article class="chapter-editor">
-          <div class="chapter-editor-heading"><span>0{{ loop.index }}</span><strong>{{ chapter.name }}</strong></div>
+          <div class="chapter-editor-heading">
+            <label class="include-toggle"><input type="checkbox" name="chapter_{{ loop.index0 }}_include" checked><span>Keep chapter</span></label>
+            <strong>{{ chapter.name }}</strong>
+          </div>
           <div class="chapter-grid">
+            <label>Order<input name="chapter_{{ loop.index0 }}_order" type="number" min="1" step="1" value="{{ loop.index }}" required></label>
             <label>Name<input name="chapter_{{ loop.index0 }}_name" value="{{ chapter.name }}" maxlength="80" required></label>
             <label>Starts at<input name="chapter_{{ loop.index0 }}_at" type="number" min="0" max="{{ artifact.duration }}" step="0.1" value="{{ chapter.at }}" required></label>
           </div>
@@ -111,6 +116,20 @@
           <label>Teaching point<textarea name="chapter_{{ loop.index0 }}_teaching_point" rows="2" maxlength="500">{{ chapter.teaching_point }}</textarea></label>
         </article>
         {% endfor %}
+        <article class="chapter-editor new-chapter">
+          <div class="chapter-editor-heading">
+            <label class="include-toggle"><input type="checkbox" name="chapter_{{ artifact.chapters | length }}_include"><span>Add chapter</span></label>
+            <strong>New teaching beat</strong>
+          </div>
+          <div class="chapter-grid">
+            <label>Order<input name="chapter_{{ artifact.chapters | length }}_order" type="number" min="1" step="1" value="{{ (artifact.chapters | length) + 1 }}"></label>
+            <label>Name<input name="chapter_{{ artifact.chapters | length }}_name" maxlength="80"></label>
+            <label>Starts at<input name="chapter_{{ artifact.chapters | length }}_at" type="number" min="0" max="{{ artifact.duration }}" step="0.1"></label>
+          </div>
+          <label>Caption<input name="chapter_{{ artifact.chapters | length }}_caption" maxlength="160"></label>
+          <label>Instructor note<textarea name="chapter_{{ artifact.chapters | length }}_note" rows="3" maxlength="1000"></textarea></label>
+          <label>Teaching point<textarea name="chapter_{{ artifact.chapters | length }}_teaching_point" rows="2" maxlength="500"></textarea></label>
+        </article>
       </div>
     </section>
 

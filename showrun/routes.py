@@ -482,15 +482,33 @@ class ShowrunRoutes:
         durations = {
             event.id: str(form.get(f"event_{event.id}_duration") or "") for event in artifact.events
         }
+        orders = {
+            event.id: str(form.get(f"event_{event.id}_order") or event.id)
+            for event in artifact.events
+        }
+        pauses = {
+            event.id: str(form.get(f"event_{event.id}_pause") or event.pause_after)
+            for event in artifact.events
+        }
+        labels = {
+            event.id: str(form.get(f"event_{event.id}_label") or event.label)
+            for event in artifact.events
+        }
+        texts = {
+            event.id: str(form.get(f"event_{event.id}_text") or event.text)
+            for event in artifact.events
+        }
         chapters = tuple(
             {
+                "include": str(form.get(f"chapter_{index}_include") or ""),
+                "order": str(form.get(f"chapter_{index}_order") or ""),
                 "name": str(form.get(f"chapter_{index}_name") or ""),
                 "at": str(form.get(f"chapter_{index}_at") or ""),
                 "caption": str(form.get(f"chapter_{index}_caption") or ""),
                 "note": str(form.get(f"chapter_{index}_note") or ""),
                 "teaching_point": str(form.get(f"chapter_{index}_teaching_point") or ""),
             }
-            for index, _chapter in enumerate(artifact.chapters)
+            for index in range(len(artifact.chapters) + 1)
         )
         try:
             directed = direct_artifact(
@@ -500,6 +518,10 @@ class ShowrunRoutes:
                 included_event_ids=included_ids,
                 event_durations=durations,
                 chapter_values=chapters,
+                event_orders=orders,
+                event_pauses=pauses,
+                event_labels=labels,
+                event_texts=texts,
             )
         except ValueError as exc:
             return self._editor_page(lesson, error=str(exc))
