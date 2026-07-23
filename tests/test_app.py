@@ -67,6 +67,7 @@ async def test_public_library_and_readiness(tmp_path: Path) -> None:
     assert library.status == ready.status == css.status == 200
     assert "Turn agent runs into shows" in library.text
     assert "Could agent sessions become documentation?" in library.text
+    assert '<main class="library-shell" hx-boost="false">' in library.text
     csp_headers = [
         value for name, value in library.headers if name.lower() == "content-security-policy"
     ]
@@ -119,6 +120,7 @@ async def test_director_can_import_preview_publish_and_embed(tmp_path: Path) -> 
     assert watch.status == embed.status == manifest.status == oembed.status == 200
     assert "showrunPlayer" in watch.text
     assert "embed-mode" in embed.text
+    assert 'hx-boost="false"' in watch.text
     assert manifest.header("cache-control") == "public, max-age=31536000, immutable"
     assert json.loads(manifest.text)["format"] == "dvd/1"
     assert f"/embed/{slug}" in json.loads(oembed.text)["html"]
