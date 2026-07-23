@@ -1,0 +1,38 @@
+{% def event_card(event) %}
+<article
+  class="event event-{{ event.kind }}"
+  x-show="time >= {{ event.at }}"
+  x-transition.opacity.duration.200ms
+  :class="{ 'current': activeEvent.id === {{ event.id }} }"
+  @click="jump({{ event.at }})"
+>
+  <div class="event-avatar" aria-hidden="true">
+    {% if event.kind == "user" %}Y
+    {% elif event.kind == "assistant" %}C
+    {% elif event.kind == "tool" %}↗
+    {% else %}✓
+    {% end %}
+  </div>
+  <div class="event-body">
+    <div class="event-heading">
+      <strong>{{ event.label }}</strong>
+      <span>{{ event.at | int }}s</span>
+      {% if event.meta %}<em>{{ event.meta }}</em>{% end %}
+    </div>
+    <p>{{ event.text }}</p>
+    {% if event.code %}<code>{{ event.code }}</code>{% end %}
+  </div>
+</article>
+{% enddef %}
+
+{% def trace_row(event) %}
+<button
+  class="trace-row"
+  :class="{ 'revealed': time >= {{ event.at }}, 'current': activeEvent.id === {{ event.id }} }"
+  @click="jump({{ event.at }})"
+>
+  <span class="line-number">{{ event.id }}</span>
+  <span class="trace-kind kind-{{ event.kind }}">{{ event.kind }}</span>
+  <span class="trace-json">{{ event.raw_preview }}</span>
+</button>
+{% enddef %}

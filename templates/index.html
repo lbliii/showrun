@@ -1,0 +1,223 @@
+{% extends "chirpui/app_layout.html" %}
+{% from "chirpui/badge.html" import badge %}
+{% from "chirpui/button.html" import btn %}
+{% from "components.html" import event_card, trace_row %}
+
+{% block title %}Showrun — Agent sessions, taught.{% end %}
+
+{% block head_extra %}
+<meta name="description" content="Showrun turns real agent sessions into polished visual lessons.">
+<link rel="stylesheet" href="/static/showrun.css">
+<script defer src="/static/showrun.js"></script>
+{% end %}
+
+{% block content %}
+{% block page_root %}
+<script id="showrun-player-config" type="application/json">{{ player_config | tojson }}</script>
+
+<main
+  class="app-shell"
+  x-data="showrunPlayer('showrun-player-config')"
+  x-init="init()"
+  x-cloak
+  @keydown.window.space.prevent="toggle()"
+  @keydown.window.arrow-right.prevent="seek(5)"
+  @keydown.window.arrow-left.prevent="seek(-5)"
+>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="Showrun home">
+      <span class="brand-mark">SR</span>
+      <span>Showrun</span>
+      <span class="prototype-tag">prototype 002 · Python cut</span>
+    </a>
+    <div class="topbar-actions">
+      {{ badge("Chirp + Kida", variant="success", cls="stack-badge") }}
+      <span class="source-pill">
+        <span class="live-dot"></span>
+        Source: this chat
+      </span>
+      <button class="quiet-button" @click="notify('Share link copied')">Share artifact</button>
+      <button class="export-button" @click="notify('Export queued · 16:9 · captions on')">
+        Export <span>↗</span>
+      </button>
+    </div>
+  </header>
+
+  <section class="project-heading">
+    <div>
+      <p class="eyebrow">Directed visual demo · Product discovery</p>
+      <h1>{{ title }}</h1>
+    </div>
+    <div class="artifact-meta">
+      <div><span>Runtime</span><strong x-text="formatTime(duration)"></strong></div>
+      <div><span>Events</span><strong>{{ events | length }}</strong></div>
+      <div><span>Integrity</span><strong class="integrity">Raw + edited</strong></div>
+    </div>
+  </section>
+
+  <section class="workspace">
+    <aside class="chapter-rail" aria-label="Lesson chapters">
+      <div class="rail-label">Chapters</div>
+      {% for chapter in chapters %}
+      <button
+        class="chapter-button"
+        :class="{ 'active': activeChapter.at === {{ chapter.at }} }"
+        @click="jump({{ chapter.at }})"
+      >
+        <span>0{{ loop.index }}</span>
+        <span class="chapter-copy">
+          <strong>{{ chapter.name }}</strong>
+          <small>{{ chapter.at | int }}s</small>
+        </span>
+      </button>
+      {% end %}
+      <div class="rail-foot">
+        <span class="keyboard-key">Space</span>
+        <span>play / pause</span>
+      </div>
+    </aside>
+
+    <div class="player">
+      <div class="player-toolbar">
+        <div class="view-switcher" aria-label="Player view">
+          <button :class="{ 'selected': mode === 'lesson' }" @click="mode = 'lesson'">Lesson</button>
+          <button :class="{ 'selected': mode === 'trace' }" @click="mode = 'trace'">Source trace</button>
+        </div>
+        <div class="toolbar-context">
+          <span x-text="activeChapter.name"></span>
+          <span class="context-separator">/</span>
+          <span>Event <span x-text="activeEvent.id"></span> of {{ events | length }}</span>
+        </div>
+        <button
+          class="caption-toggle"
+          :class="{ 'on': captions }"
+          @click="captions = !captions"
+          :aria-pressed="captions"
+        >CC</button>
+      </div>
+
+      <div class="stage" :class="mode">
+        <div class="conversation" x-show="mode === 'lesson'" x-ref="conversation" aria-live="polite">
+          {% for event in events %}
+            {{ event_card(event) }}
+          {% end %}
+        </div>
+
+        <div class="trace-view" x-show="mode === 'trace'">
+          <div class="trace-header">
+            <span>showrun-session.jsonl</span>
+            <span>read only · parsed by Python</span>
+          </div>
+          {% for event in events %}
+            {{ trace_row(event) }}
+          {% end %}
+        </div>
+
+        <div class="caption-card" x-show="captions && mode === 'lesson'">
+          <span x-text="chapterKicker"></span>
+          <strong x-text="activeChapter.caption"></strong>
+        </div>
+      </div>
+
+      <div class="timeline-panel">
+        <div class="timeline">
+          <div class="timeline-progress" :style="`width: ${(time / duration) * 100}%`"></div>
+          {% for event in events %}
+          <button
+            aria-label="Jump to event {{ event.id }}"
+            class="timeline-marker marker-{{ event.kind }}"
+            style="left: {{ (event.at / duration * 100) | round(3) }}%"
+            @click="jump({{ event.at }})"
+          ></button>
+          {% end %}
+          <input
+            aria-label="Session timeline"
+            type="range"
+            min="0"
+            max="{{ duration }}"
+            step="0.1"
+            x-model.number="time"
+            @input="playing = false"
+          >
+        </div>
+        <div class="transport">
+          <button class="restart" @click="jump(0)" aria-label="Restart">↺</button>
+          <button class="play-button" @click="toggle()" :aria-label="playing ? 'Pause' : 'Play'">
+            <span x-text="playing ? 'Ⅱ' : '▶'"></span>
+          </button>
+          <span class="timecode">
+            <span x-text="formatTime(time)"></span> <i>/</i> <span x-text="formatTime(duration)"></span>
+          </span>
+          <button class="speed" @click="cycleSpeed()" x-text="`${speed}×`"></button>
+          <button class="transcript-button" @click="transcript = !transcript">
+            <span x-text="transcript ? 'Hide transcript' : 'View transcript'"></span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <aside class="lesson-panel">
+      <div class="lesson-label">
+        <span>Instructor note</span>
+        <span x-text="chapterNumber"></span>
+      </div>
+
+      {% for chapter in chapters %}
+      <section x-show="activeChapter.at === {{ chapter.at }}" x-transition.opacity.duration.200ms>
+        <h2>{{ chapter.caption }}</h2>
+        <div class="note-markdown">{{ chapter.note | markdown }}</div>
+        <div class="teaching-point">
+          <span>Teaching point</span>
+          <p>{{ chapter.teaching_point }}</p>
+        </div>
+      </section>
+      {% end %}
+
+      <div class="layer-stack">
+        <a href="/static/artifacts/showrun-session.jsonl" download>
+          <span class="layer-dot raw"></span>
+          <span>
+            <strong>Source trace</strong>
+            <small>Immutable JSONL · download</small>
+          </span>
+        </a>
+        <a href="/static/artifacts/showrun-lesson.tape" download>
+          <span class="layer-dot edit"></span>
+          <span>
+            <strong>Lesson overlay</strong>
+            <small>Showrun tape · download</small>
+          </span>
+        </a>
+      </div>
+      {{ btn("Open source artifact", href="/static/artifacts/showrun-session.jsonl", variant="secondary", size="sm", cls="download-button") }}
+      <button class="edit-button" @click="notify('The Showrun lesson editor is the next surface')">
+        Edit this lesson <span>→</span>
+      </button>
+    </aside>
+  </section>
+
+  <section class="transcript-drawer" x-show="transcript" x-transition>
+    <div>
+      <p class="eyebrow">Accessible transcript</p>
+      <h2>{{ title }}</h2>
+    </div>
+    <div class="transcript-grid">
+      {% for event in events %}
+      <button @click="jump({{ event.at }})">
+        <time>{{ event.at | int }}s</time>
+        <strong>{{ event.label }}</strong>
+        <span>{{ event.text }}</span>
+      </button>
+      {% end %}
+    </div>
+  </section>
+
+  <footer>
+    <span>Showrun turns real agent sessions into visual lessons.</span>
+    <span>Chirp · Kida · Chirp UI · Patitas · Rosettes</span>
+  </footer>
+
+  <div class="toast" x-show="toast" x-transition x-text="toast"></div>
+</main>
+{% end %}
+{% end %}
