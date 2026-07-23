@@ -14,16 +14,17 @@ CLI alias is `sr`. Portable releases use the versioned `dvd/1` artifact format.
 - Codex rollout and canonical Showrun JSONL import
 - Local structural filtering and common credential redaction
 - Deterministic reading-time pacing and proposed chapters
-- Sanitization review and a minimal lesson director
+- Sanitization review and an event/chapter lesson director
 - Persistent, account-isolated draft libraries
 - Email/password accounts with isolated workspaces
 - Hashed, revocable API tokens for CLI access
 - Public and unlisted immutable releases
-- Responsive watch and iframe embed pages
-- Workspace import, publish, watch, and embed measurements
+- Responsive watch pages plus HTML, MDX, Markdown, and web-component embeds
+- Workspace import, publish, watch, embed, chapter, and completion measurements
+- Searchable draft/published library with release history and unpublishing
 - oEmbed discovery and response
 - Downloadable `.dvd.json` release manifests
-- `showrun` and `sr` CLI login, inspect, import, push, and serve workflows
+- `showrun` and `sr` CLI login, inspect, import, push, latest, MCP, and serve workflows
 
 The curated conversation in `static/artifacts/` is the golden fixture and
 ships as the first public release.
@@ -67,6 +68,8 @@ showrun inspect ~/.codex/sessions/YYYY/MM/DD/rollout-....jsonl
 showrun import session.jsonl --output lesson.dvd.json
 showrun login --host https://showrun-production.up.railway.app
 showrun push session.jsonl --title "A useful agent workflow"
+sr latest
+sr push --latest --title "The session I just finished"
 showrun serve --port 8000
 ```
 
@@ -75,6 +78,46 @@ push` uploads through the same sanitizer as the browser and creates a private
 draft; it never publishes automatically. API tokens are stored with mode
 `0600` in the platform config directory. `SHOWRUN_URL` and `SHOWRUN_TOKEN`
 override saved credentials for CI.
+
+### MCP
+
+`showrun mcp` exposes three stdio tools:
+
+- `showrun_import_session` imports a path or the latest Codex session.
+- `showrun_list_drafts` lists the authenticated workspace.
+- `showrun_open_editor` returns the hosted editor URL for a lesson.
+
+After installing the package, configure any stdio MCP client with:
+
+```json
+{
+  "mcpServers": {
+    "showrun": {
+      "command": "showrun",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+The MCP server uses the same credentials saved by `showrun login`.
+
+## Documentation embeds
+
+Every published watch page provides copy-ready HTML iframe, MDX, Markdown, and
+web-component snippets. The framework-free component can be themed:
+
+```html
+<script defer src="https://showrun-production.up.railway.app/static/embed.js"></script>
+<showrun-player
+  src="https://showrun-production.up.railway.app/embed/your-release"
+  title="A useful agent workflow"
+  theme="dark"
+></showrun-player>
+```
+
+Supported themes are `auto`, `light`, and `dark`. Releases are immutable;
+unpublishing removes public playback without deleting release history.
 
 ## Verify
 

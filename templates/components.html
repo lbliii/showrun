@@ -19,8 +19,16 @@
       <span>{{ event.at | int }}s</span>
       {% if event.meta %}<em>{{ event.meta }}</em>{% end %}
     </div>
+    {% if event.kind == "tool" %}
+    <details class="tool-details" @click.stop>
+      <summary>Show tool output</summary>
+      <p>{{ event.text }}</p>
+      {% if event.code %}<code>{{ event.code }}</code>{% end %}
+    </details>
+    {% else %}
     <p>{{ event.text }}</p>
     {% if event.code %}<code>{{ event.code }}</code>{% end %}
+    {% endif %}
   </div>
 </article>
 {% enddef %}

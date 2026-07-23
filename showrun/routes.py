@@ -505,7 +505,7 @@ class ShowrunRoutes:
         if event_name == "chapter.viewed":
             try:
                 chapter = int(payload.get("chapter") or 0)
-            except (TypeError, ValueError):
+            except TypeError, ValueError:
                 chapter = 0
             if not 1 <= chapter <= len(release.artifact.chapters):
                 return _json_response({"error": "Invalid chapter."}, status=422)
@@ -752,15 +752,11 @@ class ShowrunRoutes:
             f'<script defer src="{base_url}/static/embed.js"></script>\n'
             f'<showrun-player src="{embed_url}" title="{safe_title}"></showrun-player>'
         )
-        markdown_code = (
-            f"[Watch {_markdown_label(release.artifact.title)} on Showrun]({canonical})"
-        )
+        markdown_code = f"[Watch {_markdown_label(release.artifact.title)} on Showrun]({canonical})"
         user = self.browser_user()
         lesson = await self.store.get_lesson(release.lesson_id)
         author_preview = bool(
-            user is not None
-            and lesson is not None
-            and lesson.workspace_id == user.workspace_id
+            user is not None and lesson is not None and lesson.workspace_id == user.workspace_id
         )
         await self.store.record_usage(
             "release.author_previewed" if author_preview else "release.viewed",

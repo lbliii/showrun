@@ -170,9 +170,7 @@ async def test_director_can_import_preview_publish_and_embed(
         )
         completed = await client.post(
             "/api/v1/events",
-            body=json.dumps(
-                {"event": "playback.completed", "releaseSlug": slug}
-            ).encode(),
+            body=json.dumps({"event": "playback.completed", "releaseSlug": slug}).encode(),
             headers={"Content-Type": "application/json"},
         )
         dashboard = await client.get("/", headers={"Cookie": cookie})
@@ -182,6 +180,7 @@ async def test_director_can_import_preview_publish_and_embed(
     assert watch.status == embed.status == manifest.status == oembed.status == 200
     assert started.status == completed.status == 204
     assert "showrunPlayer" in watch.text
+    assert "Show tool output" in watch.text
     assert "Copy embed" in watch.text
     assert "HTML iframe" in watch.text
     assert "Web component" in watch.text
@@ -466,9 +465,7 @@ async def test_library_can_filter_duplicate_delete_and_unpublish(tmp_path: Path)
         preview = await client.get(lesson_path, headers={"Cookie": cookie})
         published = await client.post(
             f"{lesson_path}/publish",
-            body=urlencode(
-                {"visibility": "unlisted", "_csrf_token": _csrf(preview.text)}
-            ).encode(),
+            body=urlencode({"visibility": "unlisted", "_csrf_token": _csrf(preview.text)}).encode(),
             headers={"Content-Type": "application/x-www-form-urlencoded", "Cookie": cookie},
         )
         watch_path = published.header("location")
