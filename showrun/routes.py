@@ -143,6 +143,10 @@ class ShowrunRoutes:
             name="api.events.create",
         )(self.playback_event)
         self.app.route("/lessons/{lesson_id}", name="lessons.show")(self.lesson_page)
+        self.app.route(
+            "/lessons/{lesson_id}/analytics",
+            name="lessons.analytics",
+        )(self.lesson_analytics_page)
         self.app.route("/lessons/{lesson_id}/edit", name="lessons.edit")(self.edit_lesson_page)
         self.app.route(
             "/lessons/{lesson_id}/edit",
@@ -535,6 +539,24 @@ class ShowrunRoutes:
             error="",
             saved=str(request.query.get("saved") or "") == "1",
             releases=releases,
+        )
+
+    async def lesson_analytics_page(self, lesson_id: str) -> Page | Response:
+        user, denied = self.require_user()
+        if denied or user is None:
+            return denied or _redirect("/login")
+        lesson = await self.store.get_lesson(lesson_id, workspace_id=user.workspace_id)
+        if lesson is None:
+            return Response("Lesson not found", status=404, content_type="text/plain")
+        analytics = await self.store.lesson_analytics(
+            lesson_id,
+            workspace_id=user.workspace_id,
+        )
+        return Page(
+            "analytics.html",
+            "page_root",
+            analytics=analytics,
+            lesson=lesson,
         )
 
     def _editor_page(

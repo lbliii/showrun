@@ -173,12 +173,23 @@ async def test_director_can_import_preview_publish_and_embed(
             body=json.dumps({"event": "playback.completed", "releaseSlug": slug}).encode(),
             headers={"Content-Type": "application/json"},
         )
+        chapter = await client.post(
+            "/api/v1/events",
+            body=json.dumps(
+                {"event": "chapter.viewed", "releaseSlug": slug, "chapter": 1}
+            ).encode(),
+            headers={"Content-Type": "application/json"},
+        )
         dashboard = await client.get("/", headers={"Cookie": cookie})
+        analytics = await client.get(
+            f"{lesson_path}/analytics",
+            headers={"Cookie": cookie},
+        )
 
     assert "A published Showrun" in lesson.text
     assert "Publish this revision" in lesson.text
     assert watch.status == embed.status == manifest.status == oembed.status == 200
-    assert started.status == completed.status == 204
+    assert started.status == completed.status == chapter.status == 204
     assert "showrunPlayer" in watch.text
     assert "Show tool output" in watch.text
     assert "Copy embed" in watch.text
@@ -202,6 +213,10 @@ async def test_director_can_import_preview_publish_and_embed(
     assert "<strong>1</strong><span>embed loads</span>" in dashboard.text
     assert "<strong>1</strong><span>plays</span>" in dashboard.text
     assert "<strong>100%</strong><span>completion</span>" in dashboard.text
+    assert "Chapter funnel" in analytics.text
+    assert "https://docs.example" in analytics.text
+    assert "1 · 100%" in analytics.text
+    assert f"{slug}</small>" in analytics.text
 
 
 async def test_embed_supports_valid_themes_and_rejects_unknown_theme(tmp_path: Path) -> None:

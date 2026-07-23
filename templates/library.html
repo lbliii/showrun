@@ -99,6 +99,7 @@
         {% if user %}
         <div class="show-actions">
           <a class="quiet-button" href="/lessons/{{ lesson.id }}/edit">Rename / edit</a>
+          <a class="quiet-button" href="/lessons/{{ lesson.id }}/analytics">Analytics</a>
           <form action="/lessons/{{ lesson.id }}/duplicate" method="post">
             {{ csrf_field() }}
             <button class="quiet-button" type="submit">Duplicate</button>

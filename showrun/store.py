@@ -5,6 +5,8 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections import Counter
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
@@ -62,7 +64,59 @@ class UsageMetrics:
 
     @property
     def completion_rate(self) -> int:
-        return round(self.completions / self.plays * 100) if self.plays else 0
+        return min(100, round(self.completions / self.plays * 100)) if self.plays else 0
+
+
+@dataclass(frozen=True, slots=True)
+class AnalyticsSummary:
+    views: int
+    embeds: int
+    plays: int
+    completions: int
+
+    @property
+    def completion_rate(self) -> int:
+        return min(100, round(self.completions / self.plays * 100)) if self.plays else 0
+
+    @property
+    def dropoff_rate(self) -> int:
+        return 100 - self.completion_rate if self.plays else 0
+
+
+@dataclass(frozen=True, slots=True)
+class ChapterAnalytics:
+    number: int
+    name: str
+    reached: int
+    rate: int
+
+
+@dataclass(frozen=True, slots=True)
+class OriginAnalytics:
+    origin: str
+    plays: int
+
+
+@dataclass(frozen=True, slots=True)
+class ReleaseAnalytics:
+    slug: str
+    revision: int
+    visibility: str
+    active: bool
+    plays: int
+    completions: int
+
+    @property
+    def completion_rate(self) -> int:
+        return min(100, round(self.completions / self.plays * 100)) if self.plays else 0
+
+
+@dataclass(frozen=True, slots=True)
+class LessonAnalytics:
+    summary: AnalyticsSummary
+    chapters: tuple[ChapterAnalytics, ...]
+    origins: tuple[OriginAnalytics, ...]
+    releases: tuple[ReleaseAnalytics, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -289,6 +343,80 @@ class ShowrunStore:
             embeds=await count("release.embedded"),
             plays=await count("playback.started"),
             completions=await count("playback.completed"),
+        )
+
+    async def lesson_analytics(
+        self,
+        lesson_id: str,
+        *,
+        workspace_id: str,
+    ) -> LessonAnalytics:
+        lesson = await self.get_lesson(lesson_id, workspace_id=workspace_id)
+        if lesson is None:
+            raise LookupError("Lesson not found")
+        rows = await self.db.fetch(
+            _UsageEventRow,
+            "SELECT event_name, properties_json, release_id FROM usage_events "
+            "WHERE lesson_id = ? ORDER BY occurred_at ASC",
+            lesson_id,
+        )
+        event_counts = Counter(row.event_name for row in rows)
+        plays = event_counts["playback.started"]
+        chapter_counts: Counter[int] = Counter()
+        origin_counts: Counter[str] = Counter()
+        release_plays: Counter[str] = Counter()
+        release_completions: Counter[str] = Counter()
+        for row in rows:
+            try:
+                properties = json.loads(row.properties_json)
+            except json.JSONDecodeError, TypeError:
+                properties = {}
+            if row.event_name == "chapter.viewed":
+                with suppress(TypeError, ValueError):
+                    chapter_counts[int(properties.get("chapter") or 0)] += 1
+            if row.event_name == "playback.started":
+                origin = str(properties.get("origin") or "Direct / unknown")[:255]
+                origin_counts[origin] += 1
+                if row.release_id:
+                    release_plays[row.release_id] += 1
+            elif row.event_name == "playback.completed" and row.release_id:
+                release_completions[row.release_id] += 1
+
+        chapters = tuple(
+            ChapterAnalytics(
+                number=index,
+                name=chapter.name,
+                reached=chapter_counts[index],
+                rate=min(100, round(chapter_counts[index] / plays * 100)) if plays else 0,
+            )
+            for index, chapter in enumerate(lesson.artifact.chapters, 1)
+        )
+        releases = await self.list_releases(lesson_id, workspace_id=workspace_id)
+        release_rows = tuple(
+            ReleaseAnalytics(
+                slug=release.slug,
+                revision=release.revision,
+                visibility=release.visibility,
+                active=release.disabled_at is None,
+                plays=release_plays[release.id],
+                completions=release_completions[release.id],
+            )
+            for release in releases
+        )
+        origins = tuple(
+            OriginAnalytics(origin=origin, plays=count)
+            for origin, count in origin_counts.most_common(10)
+        )
+        return LessonAnalytics(
+            summary=AnalyticsSummary(
+                views=event_counts["release.viewed"],
+                embeds=event_counts["release.embedded"],
+                plays=plays,
+                completions=event_counts["playback.completed"],
+            ),
+            chapters=chapters,
+            origins=origins,
+            releases=release_rows,
         )
 
     async def create_draft(
@@ -613,6 +741,13 @@ class ShowrunStore:
 class _ReleaseOwnerRow:
     id: str
     lesson_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class _UsageEventRow:
+    event_name: str
+    properties_json: str
+    release_id: str | None
 
 
 @dataclass(frozen=True, slots=True)

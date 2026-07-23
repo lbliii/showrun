@@ -1,0 +1,118 @@
+{% extends "layout.html" %}
+
+{% block title %}Analytics for {{ lesson.title }} · Showrun{% end %}
+
+{% block head_extra %}
+<meta name="description" content="Private lesson engagement analytics for {{ lesson.title }}.">
+<link rel="stylesheet" href="/static/library.css">
+<link rel="stylesheet" href="/static/analytics.css">
+{% end %}
+
+{% block content %}
+{% block page_root %}
+<div class="analytics-shell">
+  <header class="library-nav">
+    <a class="brand" href="/">
+      <span class="brand-mark">SR</span>
+      <span>Showrun</span>
+      <span class="prototype-tag">private analytics</span>
+    </a>
+    <nav>
+      <a class="quiet-button" href="/lessons/{{ lesson.id }}/edit">Edit lesson</a>
+      <a class="library-button secondary" href="/lessons/{{ lesson.id }}">Preview</a>
+    </nav>
+  </header>
+
+  <section class="analytics-heading">
+    <div>
+      <p class="eyebrow">Learning signal · revision {{ lesson.revision }}</p>
+      <h1>{{ lesson.title }}</h1>
+      <p>See whether people start, where they reach, and which documentation surfaces send them here. Author previews are excluded.</p>
+    </div>
+    <span class="status status-{{ lesson.status }}">{{ lesson.status }}</span>
+  </section>
+
+  <section class="analytics-metrics" aria-label="Lesson performance">
+    <div><strong>{{ analytics.summary.views }}</strong><span>watch views</span></div>
+    <div><strong>{{ analytics.summary.embeds }}</strong><span>embed loads</span></div>
+    <div><strong>{{ analytics.summary.plays }}</strong><span>plays</span></div>
+    <div><strong>{{ analytics.summary.completion_rate }}%</strong><span>completion</span></div>
+    <div><strong>{{ analytics.summary.dropoff_rate }}%</strong><span>drop-off</span></div>
+  </section>
+
+  <div class="analytics-grid">
+    <section class="analytics-panel chapter-funnel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Chapter funnel</p>
+          <h2>How far learners reached</h2>
+        </div>
+        <span>{{ analytics.summary.plays }} starts</span>
+      </div>
+      {% if analytics.summary.plays %}
+      <div class="funnel-list">
+        {% for chapter in analytics.chapters %}
+        <div class="funnel-row">
+          <div>
+            <span>0{{ chapter.number }}</span>
+            <strong>{{ chapter.name }}</strong>
+          </div>
+          <div class="funnel-track"><i style="width: {{ chapter.rate }}%"></i></div>
+          <span>{{ chapter.reached }} · {{ chapter.rate }}%</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="analytics-empty">
+        <strong>No playback data yet.</strong>
+        <p>Publish and embed this lesson, then the chapter funnel will appear here.</p>
+      </div>
+      {% endif %}
+    </section>
+
+    <section class="analytics-panel">
+      <div class="panel-heading">
+        <div>
+          <p class="eyebrow">Documentation origins</p>
+          <h2>Where plays begin</h2>
+        </div>
+      </div>
+      {% if analytics.origins %}
+      <div class="origin-list">
+        {% for origin in analytics.origins %}
+        <div><strong>{{ origin.origin }}</strong><span>{{ origin.plays }} plays</span></div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="analytics-empty"><p>Origins appear after the first play.</p></div>
+      {% endif %}
+    </section>
+  </div>
+
+  <section class="analytics-panel release-performance">
+    <div class="panel-heading">
+      <div>
+        <p class="eyebrow">Release performance</p>
+        <h2>Compare immutable screenings</h2>
+      </div>
+    </div>
+    {% if analytics.releases %}
+    <div class="release-table">
+      <div class="release-table-head"><span>Release</span><span>Plays</span><span>Completed</span><span>Rate</span><span>State</span></div>
+      {% for release in analytics.releases %}
+      <div>
+        <span><strong>r{{ release.revision }}</strong><small>{{ release.visibility }} · {{ release.slug }}</small></span>
+        <span>{{ release.plays }}</span>
+        <span>{{ release.completions }}</span>
+        <span>{{ release.completion_rate }}%</span>
+        <span>{% if release.active %}<a href="/watch/{{ release.slug }}">active ↗</a>{% else %}unpublished{% endif %}</span>
+      </div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="analytics-empty"><p>No releases yet.</p></div>
+    {% endif %}
+  </section>
+</div>
+{% end %}
+{% end %}
