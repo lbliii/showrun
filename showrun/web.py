@@ -10,6 +10,7 @@ from chirp.app import App
 from chirp.config import AppConfig
 from chirp.ext.chirp_ui import use_chirp_ui
 from chirp.markdown import register_markdown_filter
+from chirp.middleware.security_headers import SecurityHeadersConfig
 from chirp.middleware.stack import secure_stack
 
 from showrun.artifacts import load_artifact
@@ -57,7 +58,12 @@ def create_app(
     application = App(config, db=resolved_database_url, migrations=str(MIGRATIONS))
     use_chirp_ui(application)
     register_markdown_filter(application)
-    for middleware in secure_stack(application.config):
+    # Chirp UI enables the per-request nonce CSP. Keep the remaining security
+    # headers, but do not append the static fallback CSP as a second policy:
+    # browsers enforce duplicate policies together, which would reject the
+    # otherwise-valid nonced Alpine and Chirp bootstrap scripts.
+    headers = SecurityHeadersConfig(content_security_policy=None)
+    for middleware in secure_stack(application.config, headers=headers):
         application.add_middleware(middleware)
 
     store = ShowrunStore(application.db)
