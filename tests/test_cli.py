@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import stat
 from pathlib import Path
 from urllib.request import Request
@@ -11,6 +12,7 @@ import pytest
 
 import showrun.cli
 from showrun.cli import main
+from showrun.mcp_server import handle_message
 
 _SESSION = """\
 {"type":"session","id":"cli-test","name":"CLI lesson"}
@@ -130,3 +132,62 @@ def test_push_uses_saved_credentials_and_prints_editor_url(
     assert json.loads(request.data or b"{}")["title"] == "CLI upload"
     assert "https://showrun.example/lessons/lesson_123/edit" in output
     assert "warning:" in output
+
+
+def test_latest_finds_newest_codex_session(
+    tmp_path: Path,
+    monkeypatch,
+    capsys,
+) -> None:
+    sessions = tmp_path / "sessions"
+    older = sessions / "2026/07/22/older.jsonl"
+    newer = sessions / "2026/07/23/newer.jsonl"
+    older.parent.mkdir(parents=True)
+    newer.parent.mkdir(parents=True)
+    older.write_text(_SESSION, encoding="utf-8")
+    newer.write_text(_SESSION, encoding="utf-8")
+    os.utime(older, ns=(1_000, 1_000))
+    os.utime(newer, ns=(2_000, 2_000))
+    monkeypatch.setenv("CODEX_SESSIONS_DIR", str(sessions))
+
+    assert main(["latest"]) == 0
+    assert capsys.readouterr().out.strip() == str(newer)
+
+
+def test_mcp_lists_tools_and_builds_editor_url(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    config = tmp_path / "config.json"
+    config.write_text(
+        json.dumps(
+            {
+                "host": "https://showrun.example",
+                "token": "sr_live_" + "c" * 44,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("SHOWRUN_CONFIG", str(config))
+
+    initialized = handle_message({"jsonrpc": "2.0", "id": 1, "method": "initialize"})
+    listed = handle_message({"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+    opened = handle_message(
+        {
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "tools/call",
+            "params": {
+                "name": "showrun_open_editor",
+                "arguments": {"lesson_id": "lesson_123"},
+            },
+        }
+    )
+
+    assert initialized is not None
+    assert initialized["result"]["serverInfo"]["name"] == "showrun"
+    assert listed is not None
+    assert len(listed["result"]["tools"]) == 3
+    assert opened is not None
+    text = opened["result"]["content"][0]["text"]
+    assert json.loads(text)["editor_url"] == "https://showrun.example/lessons/lesson_123/edit"

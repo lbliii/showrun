@@ -292,6 +292,13 @@ async def test_workspaces_are_isolated_and_tokens_are_revocable(tmp_path: Path) 
         assert api_import.status == 201
         assert api_duplicate.status == 200
         assert json.loads(api_duplicate.text)["duplicate"] is True
+        api_lessons = await client.get(
+            "/api/v1/lessons",
+            headers={"Authorization": f"Bearer {plaintext_token}"},
+        )
+        assert api_lessons.status == 200
+        lesson_titles = {lesson["title"] for lesson in json.loads(api_lessons.text)["lessons"]}
+        assert {"Private to workspace one", "Pushed from sr"} <= lesson_titles
 
         revoked = await client.post(
             f"/settings/tokens/{token_id_match.group(1)}/revoke",

@@ -6,6 +6,7 @@ import hashlib
 import html
 import json
 import os
+from dataclasses import asdict
 from typing import Any
 
 from chirp.app import App
@@ -116,6 +117,7 @@ class ShowrunRoutes:
             methods=["POST"],
             name="api.imports.create",
         )(self.api_import_session)
+        self.app.route("/api/v1/lessons", name="api.lessons.index")(self.api_lessons)
         self.app.route("/lessons/{lesson_id}", name="lessons.show")(self.lesson_page)
         self.app.route("/lessons/{lesson_id}/edit", name="lessons.edit")(self.edit_lesson_page)
         self.app.route(
@@ -422,6 +424,13 @@ class ShowrunRoutes:
             },
             status=200 if duplicate else 201,
         )
+
+    async def api_lessons(self) -> Response:
+        user, denied = self.require_api_scope("imports:write")
+        if denied or user is None:
+            return denied or _json_response({"error": "Unauthorized"}, status=401)
+        lessons = await self.store.list_lessons(workspace_id=user.workspace_id)
+        return _json_response({"lessons": [asdict(lesson) for lesson in lessons]})
 
     async def edit_lesson_page(
         self,

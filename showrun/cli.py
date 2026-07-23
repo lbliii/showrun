@@ -127,51 +127,136 @@ def _login_command(args: argparse.Namespace) -> int:
     return 0
 
 
-def _push(args: argparse.Namespace) -> int:
-    if not args.path.is_file():
-        raise ValueError(f"Session file not found: {args.path}")
-    try:
-        transcript = args.path.read_text(encoding="utf-8")
-    except UnicodeDecodeError as exc:
-        raise ValueError("Session files must be UTF-8 JSONL") from exc
-    host, token = _load_credentials(host_override=args.host, token_override=args.token)
-    body = json.dumps(
-        {
-            "filename": args.path.name,
-            "title": args.title,
-            "transcript": transcript,
-        },
-        ensure_ascii=False,
-    ).encode("utf-8")
+def find_latest_session(root: Path | None = None) -> Path:
+    """Return the newest Codex JSONL session available on this machine."""
+
+    configured = os.environ.get("CODEX_SESSIONS_DIR")
+    default_root = Path(configured).expanduser() if configured else Path.home() / ".codex/sessions"
+    session_root = root or default_root
+    if not session_root.is_dir():
+        raise ValueError(f"Codex sessions directory not found: {session_root}")
+    candidates = [path for path in session_root.rglob("*.jsonl") if path.is_file()]
+    if not candidates:
+        raise ValueError(f"No Codex JSONL sessions found under {session_root}")
+    return max(candidates, key=lambda path: path.stat().st_mtime_ns)
+
+
+def _resolve_session_path(path: Path | None, *, latest: bool) -> Path:
+    if latest and path is not None:
+        raise ValueError("Pass a session path or --latest, not both")
+    resolved = find_latest_session() if latest else path
+    if resolved is None:
+        raise ValueError("Pass a session path or use --latest")
+    if not resolved.is_file():
+        raise ValueError(f"Session file not found: {resolved}")
+    return resolved
+
+
+def api_request(
+    method: str,
+    path: str,
+    *,
+    host: str,
+    token: str,
+    payload: dict[str, object] | None = None,
+) -> dict[str, object]:
+    body = json.dumps(payload, ensure_ascii=False).encode("utf-8") if payload is not None else None
     request = Request(
-        urljoin(f"{host}/", "api/v1/imports"),
+        urljoin(f"{host}/", path.lstrip("/")),
         data=body,
         headers={
             "Authorization": f"Bearer {token}",
             "Content-Type": "application/json",
             "User-Agent": f"showrun/{version('showrun')}",
         },
-        method="POST",
+        method=method,
     )
     try:
         with urlopen(request, timeout=30) as response:
-            payload = json.loads(response.read())
+            result = json.loads(response.read())
     except HTTPError as exc:
         try:
             detail = json.loads(exc.read()).get("error", exc.reason)
         except json.JSONDecodeError, AttributeError:
             detail = exc.reason
-        raise ValueError(f"Showrun rejected the import: {detail}") from exc
+        raise ValueError(f"Showrun rejected the request: {detail}") from exc
     except URLError as exc:
         raise ValueError(f"Could not reach {host}: {exc.reason}") from exc
+    if not isinstance(result, dict):
+        raise ValueError("Showrun returned an invalid API response")
+    return result
+
+
+def push_session(
+    path: Path,
+    *,
+    title: str = "",
+    host_override: str = "",
+    token_override: str = "",
+) -> tuple[str, dict[str, object]]:
+    try:
+        transcript = path.read_text(encoding="utf-8")
+    except UnicodeDecodeError as exc:
+        raise ValueError("Session files must be UTF-8 JSONL") from exc
+    host, token = _load_credentials(
+        host_override=host_override,
+        token_override=token_override,
+    )
+    payload = api_request(
+        "POST",
+        "/api/v1/imports",
+        host=host,
+        token=token,
+        payload={
+            "filename": path.name,
+            "title": title,
+            "transcript": transcript,
+        },
+    )
     lesson_url = str(payload.get("lesson_url") or "")
     if not lesson_url:
         raise ValueError("Showrun returned an invalid import response")
-    print(urljoin(f"{host}/", lesson_url.lstrip("/")))
+    return urljoin(f"{host}/", lesson_url.lstrip("/")), payload
+
+
+def _push(args: argparse.Namespace) -> int:
+    path = _resolve_session_path(args.path, latest=args.latest)
+    lesson_url, payload = push_session(
+        path,
+        title=args.title,
+        host_override=args.host,
+        token_override=args.token,
+    )
+    print(lesson_url)
     if payload.get("duplicate"):
         print("Already imported; opened the existing draft.")
-    for warning in payload.get("warnings") or ():
-        print(f"warning: {warning}")
+    warnings = payload.get("warnings")
+    if isinstance(warnings, list):
+        for warning in warnings:
+            print(f"warning: {warning}")
+    return 0
+
+
+def _latest(args: argparse.Namespace) -> int:
+    path = find_latest_session(args.root)
+    if args.json:
+        print(
+            json.dumps(
+                {
+                    "path": str(path),
+                    "modified_ns": path.stat().st_mtime_ns,
+                }
+            )
+        )
+    else:
+        print(path)
+    return 0
+
+
+def _mcp(_args: argparse.Namespace) -> int:
+    from showrun.mcp_server import run
+
+    run()
     return 0
 
 
@@ -209,11 +294,20 @@ def _parser() -> argparse.ArgumentParser:
     login_command.set_defaults(handler=_login_command)
 
     push_command = commands.add_parser("push", help="Import a session into hosted Showrun")
-    push_command.add_argument("path", type=Path)
+    push_command.add_argument("path", type=Path, nargs="?")
+    push_command.add_argument("--latest", action="store_true")
     push_command.add_argument("--title", default="")
     push_command.add_argument("--host", default="")
     push_command.add_argument("--token", default="")
     push_command.set_defaults(handler=_push)
+
+    latest_command = commands.add_parser("latest", help="Find the newest Codex session")
+    latest_command.add_argument("--root", type=Path)
+    latest_command.add_argument("--json", action="store_true")
+    latest_command.set_defaults(handler=_latest)
+
+    mcp_command = commands.add_parser("mcp", help="Run the Showrun MCP server over stdio")
+    mcp_command.set_defaults(handler=_mcp)
     return parser
 
 
