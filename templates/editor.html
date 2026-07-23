@@ -84,7 +84,12 @@
             </div>
           </div>
           <div class="event-editor-copy">
-            <span>{{ event.kind }} · source {{ event.source_at | round(1) }}s</span>
+            <span>
+              {{ event.kind }}{% if event.activity %} · {{ event.activity }}{% endif %}
+              {% if event.provider %} · {{ event.provider }}{% endif %}
+              {% if event.status %} · {{ event.status }}{% endif %}
+              · source {{ event.source_at | round(1) }}s
+            </span>
             <label>On-screen label<input name="event_{{ event.id }}_label" value="{{ event.label }}" maxlength="80" required></label>
             <label>On-screen content<textarea name="event_{{ event.id }}_text" rows="4" maxlength="10000" required>{{ event.text }}</textarea></label>
           </div>

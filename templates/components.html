@@ -1,6 +1,66 @@
+{% def evidence_sources(sources) %}
+<ul class="evidence-sources">
+  {% for source in sources %}
+  <li>
+    {% if source.url %}
+    <a href="{{ source.url }}" target="_blank" rel="noreferrer noopener">{{ source.title }}</a>
+    {% else %}
+    <span>{{ source.title }}</span>
+    {% endif %}
+    {% if source.domain %}<small>{{ source.domain }}</small>{% endif %}
+  </li>
+  {% end %}
+</ul>
+{% enddef %}
+
+{% def evidence_details(event) %}
+<details class="evidence-details" @click.stop>
+  <summary>
+    <span>Inspect evidence</span>
+    {% if event.provider %}<small>{{ event.provider }}</small>{% endif %}
+    {% if event.elapsed_ms %}<small>{{ event.elapsed_ms }}ms</small>{% endif %}
+  </summary>
+  <div class="evidence-grid">
+    {% if event.operation %}
+    <div class="evidence-row evidence-operation">
+      <span>Operation</span>
+      <code>{{ event.operation }}</code>
+    </div>
+    {% endif %}
+    {% if event.input_preview %}
+    <div class="evidence-row">
+      <span>Sanitized input</span>
+      <pre>{{ event.input_preview }}</pre>
+    </div>
+    {% endif %}
+    {% if event.output_preview %}
+    <div class="evidence-row">
+      <span>Sanitized output</span>
+      <pre>{{ event.output_preview }}</pre>
+    </div>
+    {% endif %}
+    {% if event.sources %}
+    <div class="evidence-row">
+      <span>Sources</span>
+      {{ evidence_sources(event.sources) }}
+    </div>
+    {% endif %}
+    {% if event.redactions %}
+    <div class="redaction-note">
+      <strong>Public-safe view</strong>
+      <ul>
+        {% for note in event.redactions %}<li>{{ note }}</li>{% endfor %}
+      </ul>
+    </div>
+    {% endif %}
+    {% if event.code %}<code class="evidence-code">{{ event.code }}</code>{% end %}
+  </div>
+</details>
+{% enddef %}
+
 {% def event_card(event) %}
 <article
-  class="event event-{{ event.kind }}"
+  class="event event-{{ event.kind }}{% if event.activity %} execution-card activity-{{ event.activity }}{% endif %}"
   x-show="time >= {{ event.at }}"
   x-transition.opacity.duration.200ms
   :class="{ 'current': activeEvent.id === {{ event.id }} }"
@@ -9,6 +69,12 @@
   <div class="event-avatar" aria-hidden="true">
     {% if event.kind == "user" %}Y
     {% elif event.kind == "assistant" %}C
+    {% elif event.activity == "delegation" %}⇢
+    {% elif event.activity == "search" %}⌕
+    {% elif event.activity == "source" %}↗
+    {% elif event.activity == "file" %}Δ
+    {% elif event.activity == "test" %}✓
+    {% elif event.activity == "mcp" %}M
     {% elif event.kind == "tool" %}↗
     {% else %}✓
     {% end %}
@@ -17,16 +83,19 @@
     <div class="event-heading">
       <strong>{{ event.label }}</strong>
       <span>{{ event.at | int }}s</span>
+      {% if event.activity %}<span class="activity-label">{{ event.activity }}</span>{% endif %}
+      {% if event.status %}<span class="status-pill status-{{ event.status }}">{{ event.status }}</span>{% endif %}
       {% if event.meta %}<em>{{ event.meta }}</em>{% end %}
     </div>
-    {% if event.kind == "tool" %}
+    <p>{{ event.text }}</p>
+    {% if event.activity %}
+    {{ evidence_details(event) }}
+    {% elif event.kind == "tool" %}
     <details class="tool-details" @click.stop>
       <summary>Show tool output</summary>
-      <p>{{ event.text }}</p>
       {% if event.code %}<code>{{ event.code }}</code>{% end %}
     </details>
     {% else %}
-    <p>{{ event.text }}</p>
     {% if event.code %}<code>{{ event.code }}</code>{% end %}
     {% endif %}
   </div>
@@ -41,7 +110,7 @@
   @click="jump({{ event.at }})"
 >
   <span class="line-number">{{ event.id }}</span>
-  <span class="trace-kind kind-{{ event.kind }}">{{ event.kind }}</span>
+  <span class="trace-kind kind-{{ event.kind }}">{% if event.activity %}{{ event.activity }}{% else %}{{ event.kind }}{% endif %}</span>
   <span class="trace-json">{{ event.raw_preview }}</span>
 </button>
 {% enddef %}

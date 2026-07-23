@@ -4,15 +4,25 @@ from __future__ import annotations
 
 import json
 import re
-import shlex
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass, replace
 from itertools import pairwise
-from math import isfinite
 from pathlib import Path
 from typing import Any
 
+from showrun.evidence import (
+    ACTIVITY_STATUSES as _ACTIVITY_STATUSES,
+)
+from showrun.evidence import (
+    EvidenceSource,
+    redact_text,
+)
+
 FORMAT_VERSION = "dvd/1"
+ACTIVITY_STATUSES = _ACTIVITY_STATUSES
+ACTIVITY_TYPES = frozenset(
+    {"", "delegation", "decision", "file", "mcp", "search", "source", "test", "tool"}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -30,6 +40,15 @@ class TraceEvent:
     code: str = ""
     raw_preview: str = ""
     pause_after: float = 0.7
+    activity: str = ""
+    status: str = ""
+    provider: str = ""
+    operation: str = ""
+    input_preview: str = ""
+    output_preview: str = ""
+    elapsed_ms: int = 0
+    sources: tuple[EvidenceSource, ...] = ()
+    redactions: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -158,7 +177,7 @@ def create_artifact_from_text(
 ) -> ShowrunArtifact:
     """Import a session and automatically direct a watchable draft."""
 
-    from showrun.importers import parse_session_text, redact_text
+    from showrun.importers import parse_session_text
 
     imported_title, session_id, source_format, source_events, warnings = parse_session_text(
         text,
@@ -197,8 +216,6 @@ def direct_artifact(
     event_texts: Mapping[int, str] | None = None,
 ) -> ShowrunArtifact:
     """Apply the small director surface while preserving sanitized source metadata."""
-
-    from showrun.importers import redact_text
 
     base_title = " ".join(title.split())[:120]
     base_description = description.strip()[:500]
@@ -337,267 +354,17 @@ def direct_artifact(
     )
 
 
-def load_lesson(path: Path) -> tuple[str | None, tuple[Chapter, ...], tuple[str, ...]]:
-    """Parse the intentionally small Showrun tape language."""
-
-    title: str | None = None
-    chapters: list[Chapter] = []
-    outputs: list[str] = []
-    current: dict[str, Any] | None = None
-
-    def commit() -> None:
-        nonlocal current
-        if current is not None:
-            chapters.append(Chapter(**current))
-            current = None
-
-    for line_number, raw_line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
-        line = raw_line.strip()
-        if not line or line.startswith("#"):
-            continue
-        try:
-            parts = shlex.split(line)
-        except ValueError as exc:
-            raise ValueError(f"Invalid tape syntax on line {line_number}: {exc}") from exc
-        command, *values = parts
-
-        if command == "Title":
-            title = " ".join(values)
-        elif command == "Chapter":
-            commit()
-            if len(values) != 3 or values[1] != "At":
-                message = f"Chapter requires: Chapter <name> At <seconds> (line {line_number})"
-                raise ValueError(message)
-            current = {"name": values[0], "at": float(values[2])}
-        elif command in {"Caption", "Note", "TeachingPoint"}:
-            if current is None:
-                raise ValueError(f"{command} must follow a Chapter (line {line_number})")
-            field = {
-                "Caption": "caption",
-                "Note": "note",
-                "TeachingPoint": "teaching_point",
-            }[command]
-            current[field] = " ".join(values)
-        elif command == "Output":
-            outputs.append(" ".join(values))
-        elif command in {"Source", "Set", "Focus", "Pause", "Highlight", "Assert"}:
-            continue
-        else:
-            raise ValueError(f"Unknown tape command {command!r} on line {line_number}")
-
-    commit()
-    if not chapters:
-        raise ValueError("The lesson contains no chapters")
-    return title, tuple(chapters), tuple(outputs)
-
-
 def load_artifact(session_path: Path, lesson_path: Path) -> ShowrunArtifact:
     """Load the hand-directed golden fixture."""
 
-    from showrun.importers import parse_session_text
+    from showrun.lesson_tape import load_artifact as parse_artifact
 
-    source_text = session_path.read_text(encoding="utf-8")
-    source_title, session_id, source_format, events, warnings = parse_session_text(
-        source_text,
-        filename=session_path.name,
-    )
-    lesson_title, chapters, outputs = load_lesson(lesson_path)
-    timed_events = tuple(
-        replace(
-            event,
-            duration=round(
-                max(2, (events[index + 1].at - event.at) - 0.5) if index + 1 < len(events) else 3,
-                1,
-            ),
-        )
-        for index, event in enumerate(events)
-    )
-    duration = max(timed_events[-1].at + 3, chapters[-1].at + 10)
-    return ShowrunArtifact(
-        title=lesson_title or source_title,
-        session_id=session_id,
-        source_format=source_format,
-        events=timed_events,
-        chapters=chapters,
-        duration=duration,
-        outputs=outputs,
-        warnings=warnings,
-    )
+    return parse_artifact(session_path, lesson_path)
 
 
 def artifact_from_json(raw: str) -> ShowrunArtifact:
     """Validate and rehydrate a stored immutable manifest."""
 
-    from showrun.importers import MAX_IMPORT_BYTES, redact_text
+    from showrun.artifact_serialization import artifact_from_json as parse_artifact
 
-    if len(raw.encode("utf-8")) > MAX_IMPORT_BYTES:
-        raise ValueError("Artifact exceeds the 2 MB import limit")
-    try:
-        payload = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise ValueError("Artifact must be valid JSON") from exc
-    if not isinstance(payload, dict):
-        raise ValueError("Artifact must be a JSON object")
-    if payload.get("format") != FORMAT_VERSION:
-        raise ValueError("Unsupported Showrun artifact format")
-    recording = payload.get("recording") or {}
-    lesson = payload.get("lesson") or {}
-    event_values = payload.get("events") or ()
-    chapter_values = payload.get("chapters") or ()
-    if not isinstance(recording, dict) or not isinstance(lesson, dict):
-        raise ValueError("Artifact recording and lesson values must be objects")
-    if not isinstance(event_values, list) or not 1 <= len(event_values) <= 500:
-        raise ValueError("Artifact requires between 1 and 500 events")
-    if not isinstance(chapter_values, list) or not 1 <= len(chapter_values) <= 100:
-        raise ValueError("Artifact requires at least one event and chapter")
-
-    events: list[TraceEvent] = []
-    credentials_redacted = False
-    for index, value in enumerate(event_values, 1):
-        if not isinstance(value, dict):
-            raise ValueError(f"Artifact event {index} must be an object")
-        try:
-            event = TraceEvent(
-                id=int(str(value.get("id") or 0)),
-                at=float(str(value.get("at") or 0)),
-                duration=float(str(value.get("duration") or 0)),
-                kind=str(value.get("kind") or ""),
-                label=str(value.get("label") or ""),
-                text=str(value.get("text") or ""),
-                source_at=float(str(value.get("source_at") or 0)),
-                meta=str(value.get("meta") or ""),
-                code=str(value.get("code") or ""),
-                raw_preview=str(value.get("raw_preview") or ""),
-                pause_after=float(str(value.get("pause_after", 0.7))),
-            )
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"Artifact event {index} is invalid") from exc
-        if event.id != index:
-            raise ValueError("Artifact event IDs must be sequential")
-        if event.kind not in {"user", "assistant", "tool", "result"}:
-            raise ValueError(f"Artifact event {index} has an unsupported kind")
-        if (
-            not isfinite(event.at)
-            or not isfinite(event.duration)
-            or not 0 <= event.at <= 86_400
-            or not 0 < event.duration <= 60
-        ):
-            raise ValueError(f"Artifact event {index} has invalid timing")
-        if not isfinite(event.pause_after) or not 0 <= event.pause_after <= 30:
-            raise ValueError(f"Artifact event {index} has an invalid pause")
-        if events and event.at < events[-1].at:
-            raise ValueError("Artifact events must be ordered by playback time")
-        base_label = " ".join(event.label.split())[:80]
-        base_text = event.text.strip()[:10000]
-        base_meta = event.meta.strip()[:500]
-        base_code = event.code.strip()[:10000]
-        base_preview = event.raw_preview.strip()[:2000]
-        clean_label = redact_text(base_label)
-        clean_text = redact_text(base_text)
-        clean_meta = redact_text(base_meta)
-        clean_code = redact_text(base_code)
-        clean_preview = redact_text(base_preview)
-        if not clean_label or not clean_text:
-            raise ValueError(f"Artifact event {index} needs a label and content")
-        credentials_redacted = credentials_redacted or (
-            (clean_label, clean_text, clean_meta, clean_code, clean_preview)
-            != (base_label, base_text, base_meta, base_code, base_preview)
-        )
-        events.append(
-            replace(
-                event,
-                label=clean_label,
-                text=clean_text,
-                meta=clean_meta,
-                code=clean_code,
-                raw_preview=clean_preview,
-            )
-        )
-
-    chapters: list[Chapter] = []
-    for index, value in enumerate(chapter_values, 1):
-        if not isinstance(value, dict):
-            raise ValueError(f"Artifact chapter {index} must be an object")
-        try:
-            chapter = Chapter(
-                name=str(value.get("name") or ""),
-                at=float(str(value.get("at") or 0)),
-                caption=str(value.get("caption") or ""),
-                note=str(value.get("note") or ""),
-                teaching_point=str(value.get("teaching_point") or ""),
-            )
-        except (TypeError, ValueError) as exc:
-            raise ValueError(f"Artifact chapter {index} is invalid") from exc
-        base_name = " ".join(chapter.name.split())[:80]
-        base_caption = chapter.caption.strip()[:160]
-        base_note = chapter.note.strip()[:1000]
-        base_teaching_point = chapter.teaching_point.strip()[:500]
-        name = redact_text(base_name)
-        caption = redact_text(base_caption)
-        note = redact_text(base_note)
-        teaching_point = redact_text(base_teaching_point)
-        if not name or not isfinite(chapter.at) or not 0 <= chapter.at <= 86_400:
-            raise ValueError(f"Artifact chapter {index} is invalid")
-        if chapters and chapter.at < chapters[-1].at:
-            raise ValueError("Artifact chapters must be ordered by playback time")
-        credentials_redacted = credentials_redacted or (
-            (name, caption, note, teaching_point)
-            != (base_name, base_caption, base_note, base_teaching_point)
-        )
-        chapters.append(
-            replace(
-                chapter,
-                name=name,
-                caption=caption,
-                note=note,
-                teaching_point=teaching_point,
-            )
-        )
-
-    try:
-        duration = float(lesson.get("duration") or 0)
-    except (TypeError, ValueError) as exc:
-        raise ValueError("Artifact duration must be a number") from exc
-    if (
-        not isfinite(duration)
-        or duration < events[-1].at + events[-1].duration
-        or duration > 86_400
-    ):
-        raise ValueError("Artifact duration must extend beyond its final event")
-    if chapters[-1].at >= duration:
-        raise ValueError("Artifact chapters must begin within its duration")
-    warning_values = payload.get("warnings", [])
-    output_values = payload.get("outputs", [])
-    if not isinstance(warning_values, list) or not isinstance(output_values, list):
-        raise ValueError("Artifact outputs and warnings must be arrays")
-    base_title = " ".join(str(lesson.get("title") or "Untitled Showrun").split())[:120]
-    base_description = str(lesson.get("description") or "").strip()[:500]
-    base_session_id = str(recording.get("session_id") or "")[:255]
-    base_source_format = str(recording.get("source_format") or "unknown")[:80]
-    base_outputs = tuple(str(value)[:500] for value in output_values)
-    base_warnings = tuple(str(value)[:500] for value in warning_values)
-    clean_title = redact_text(base_title)
-    clean_description = redact_text(base_description)
-    clean_session_id = redact_text(base_session_id)
-    clean_source_format = redact_text(base_source_format)
-    clean_outputs = tuple(redact_text(value) for value in base_outputs)
-    warnings = tuple(redact_text(value) for value in base_warnings)
-    credentials_redacted = credentials_redacted or (
-        (clean_title, clean_description, clean_session_id, clean_source_format)
-        != (base_title, base_description, base_session_id, base_source_format)
-        or clean_outputs != base_outputs
-        or warnings != base_warnings
-    )
-    if credentials_redacted and "Potential credentials were redacted locally." not in warnings:
-        warnings += ("Potential credentials were redacted locally.",)
-    return ShowrunArtifact(
-        title=clean_title,
-        description=clean_description,
-        session_id=clean_session_id,
-        source_format=clean_source_format,
-        events=tuple(events),
-        chapters=tuple(chapters),
-        duration=duration,
-        outputs=clean_outputs,
-        warnings=warnings,
-    )
+    return parse_artifact(raw)

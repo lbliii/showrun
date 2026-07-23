@@ -1,0 +1,219 @@
+.execution-card {
+  max-width: 94%;
+}
+
+.execution-card .event-body {
+  border-left: 3px solid var(--activity-color, var(--tool));
+  background: color-mix(in srgb, var(--activity-color, var(--tool)) 7%, var(--card));
+}
+
+.execution-card .event-avatar {
+  border-color: var(--activity-color, var(--tool));
+  background: var(--activity-color, var(--tool));
+}
+
+.activity-mcp,
+.marker-mcp {
+  --activity-color: #6947df;
+}
+
+.activity-delegation,
+.marker-delegation {
+  --activity-color: #d14c74;
+}
+
+.activity-search,
+.activity-source,
+.marker-search,
+.marker-source {
+  --activity-color: #167aa6;
+}
+
+.activity-file,
+.marker-file {
+  --activity-color: #a05d14;
+}
+
+.activity-test,
+.marker-test {
+  --activity-color: #1f8a59;
+}
+
+.activity-decision,
+.marker-decision {
+  --activity-color: #c04b2d;
+}
+
+.activity-label,
+.status-pill {
+  border-radius: 999px;
+  padding: 3px 7px;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 7px !important;
+  font-weight: 720;
+  letter-spacing: 0.05em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.activity-label {
+  border: 1px solid color-mix(in srgb, var(--activity-color, var(--tool)) 45%, transparent);
+  color: var(--activity-color, var(--tool)) !important;
+}
+
+.status-pill {
+  border: 1px solid var(--line);
+  background: var(--card);
+}
+
+.status-success {
+  border-color: #88caae;
+  color: #176b43 !important;
+}
+
+.status-failure {
+  border-color: #e8a29a;
+  color: #a32e25 !important;
+}
+
+.status-started,
+.status-retry {
+  border-color: #e3bd76;
+  color: #88520d !important;
+}
+
+.evidence-details {
+  margin-top: 11px;
+  border-top: 1px solid color-mix(in srgb, var(--activity-color, var(--tool)) 22%, transparent);
+  padding-top: 9px;
+}
+
+.evidence-details summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--activity-color, var(--tool));
+  cursor: pointer;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 10px;
+  font-weight: 720;
+  list-style-position: inside;
+}
+
+.evidence-details summary small {
+  color: var(--muted);
+  font-size: 8px;
+  font-weight: 520;
+}
+
+.evidence-details summary small:first-of-type {
+  margin-left: auto;
+}
+
+.evidence-grid {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.evidence-row {
+  min-width: 0;
+}
+
+.evidence-row > span {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 7px;
+  font-weight: 720;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.evidence-row pre,
+.evidence-operation code,
+.evidence-code {
+  overflow-x: auto;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: rgba(23, 23, 17, 0.94);
+  color: #f5f3e9;
+  padding: 8px 9px;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 8px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.evidence-operation code {
+  display: inline-block;
+  color: var(--acid);
+}
+
+.evidence-sources {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.evidence-sources li {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  border-left: 2px solid var(--activity-color, var(--tool));
+  padding-left: 8px;
+  font-size: 9px;
+}
+
+.evidence-sources a {
+  color: var(--ink);
+  font-weight: 650;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+}
+
+.evidence-sources small {
+  color: var(--muted);
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 7px;
+}
+
+.redaction-note {
+  border: 1px dashed #c89c38;
+  border-radius: 3px;
+  background: #fff8db;
+  padding: 7px 8px;
+  color: #73500a;
+  font-family: var(--font-geist-mono), monospace;
+  font-size: 7px;
+}
+
+.redaction-note ul {
+  margin: 5px 0 0;
+  padding-left: 14px;
+}
+
+.marker-activity {
+  width: 8px;
+  border-color: white;
+  background: var(--activity-color, var(--tool));
+}
+
+@media (max-width: 680px) {
+  .execution-card {
+    max-width: 100%;
+  }
+
+  .evidence-details summary small:first-of-type {
+    margin-left: 0;
+  }
+
+  .evidence-details summary {
+    flex-wrap: wrap;
+  }
+}

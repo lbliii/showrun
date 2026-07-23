@@ -38,5 +38,15 @@ Note "This conversation is both the source trace and the subject of the demonstr
 TeachingPoint "Dogfooding makes the value legible in a single click."
 Assert Event "prototype_created"
 
+Chapter "The proof layer" At 125
+Caption "Show the work without exposing hidden reasoning."
+Note "Typed execution evidence makes agent behavior **inspectable**: delegation, MCP calls, searches, file changes, and tests become expandable proof points."
+TeachingPoint "Progressive disclosure preserves the story while letting technical readers verify the run."
+
+Chapter "The implementation" At 155
+Caption "The lesson now proves its own construction."
+Note "Every execution card uses the same provider-neutral `dvd/1` contract and passes through a local sanitization boundary before publication."
+TeachingPoint "A trustworthy demo should expose outcomes and evidence, not secrets or private chain-of-thought."
+
 Output "showrun-prototype.html"
 Output "showrun-prototype.mp4"

@@ -35,7 +35,7 @@ def test_canonical_import_creates_deterministic_directed_artifact() -> None:
     assert "abcdefghijk12345" not in artifact.to_json()
 
 
-def test_codex_import_excludes_internal_messages_and_tool_arguments() -> None:
+def test_codex_import_excludes_internal_messages_and_sanitizes_tool_evidence() -> None:
     transcript = "\n".join(
         [
             json.dumps(
@@ -81,8 +81,23 @@ def test_codex_import_excludes_internal_messages_and_tool_arguments() -> None:
                     "timestamp": "2026-01-01T00:00:03Z",
                     "payload": {
                         "type": "function_call",
-                        "name": "run",
+                        "name": "mcp__railway__deployment_list",
+                        "call_id": "call-1",
                         "arguments": '{"secret":"not-uploaded"}',
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "response_item",
+                    "timestamp": "2026-01-01T00:00:05Z",
+                    "payload": {
+                        "type": "function_call_output",
+                        "call_id": "call-1",
+                        "output": {
+                            "status": "SUCCESS",
+                            "path": "/Users/example/private/project",
+                        },
                     },
                 }
             ),
@@ -94,10 +109,186 @@ def test_codex_import_excludes_internal_messages_and_tool_arguments() -> None:
     serialized = artifact.to_json()
     assert artifact.source_format == "codex-jsonl"
     assert artifact.events[0].text == "Build a replay."
-    assert artifact.events[1].text == "Ran run"
+    tool = artifact.events[1]
+    assert tool.activity == "mcp"
+    assert tool.provider == "Railway"
+    assert tool.operation == "mcp__railway__deployment_list"
+    assert tool.status == "success"
+    assert tool.elapsed_ms == 2000
+    assert tool.input_preview == '{"secret":"[REDACTED]"}'
+    assert "[LOCAL PATH]" in tool.output_preview
+    assert tool.redactions == ("Sensitive values removed locally.",)
     assert "private control text" not in serialized
     assert "not-uploaded" not in serialized
+    assert "/Users/example" not in serialized
     assert artifact.warnings
+
+
+def test_high_fidelity_event_round_trip_sanitizes_sources_and_details() -> None:
+    transcript = "\n".join(
+        [
+            json.dumps({"type": "session", "id": "proof", "name": "Execution proof"}),
+            json.dumps(
+                {
+                    "type": "message",
+                    "at": 0,
+                    "message": {"role": "user", "content": "Prove the MCP call."},
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "event",
+                    "at": 3,
+                    "event": {
+                        "kind": "tool",
+                        "activity": "mcp",
+                        "name": "Railway deployment",
+                        "content": "Inspected the production deployment.",
+                        "provider": "Railway",
+                        "operation": "deployment.list",
+                        "status": "success",
+                        "elapsed_ms": 842,
+                        "input": {
+                            "environment": "production",
+                            "token": "abcdefghijk12345",
+                            "access_token": "access-secret-value",
+                            "client_secret": "client-secret-value",
+                            "Set-Cookie": "session=private",
+                        },
+                        "output": {"status": "SUCCESS"},
+                        "sources": [
+                            {
+                                "title": "Railway deployment",
+                                "url": "https://railway.com/project/example?token=private#fragment",
+                            }
+                        ],
+                        "redactions": ["Authentication removed"],
+                    },
+                }
+            ),
+        ]
+    )
+
+    artifact = create_artifact_from_text(transcript)
+    restored = artifact_from_json(artifact.to_json())
+    event = restored.events[1]
+
+    assert restored == artifact
+    assert event.activity == "mcp"
+    assert event.status == "success"
+    assert event.elapsed_ms == 842
+    assert event.input_preview == (
+        '{"environment":"production","token":"[REDACTED]",'
+        '"access_token":"[REDACTED]","client_secret":"[REDACTED]",'
+        '"Set-Cookie":"[REDACTED]"}'
+    )
+    assert event.output_preview == '{"status":"SUCCESS"}'
+    assert event.sources[0].title == "Railway deployment"
+    assert event.sources[0].url == "https://railway.com/project/example"
+    assert event.sources[0].domain == "railway.com"
+    assert "private" not in restored.to_json()
+    assert "Potential credentials were redacted locally." in restored.warnings
+
+
+def test_codex_imports_native_web_custom_and_shell_test_events() -> None:
+    transcript = "\n".join(
+        [
+            json.dumps(
+                {
+                    "type": "session_meta",
+                    "payload": {"id": "native-events"},
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "response_item",
+                    "timestamp": "2026-01-01T00:00:00Z",
+                    "payload": {
+                        "type": "message",
+                        "role": "user",
+                        "content": [{"type": "input_text", "text": "Prove the workflow."}],
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "response_item",
+                    "timestamp": "2026-01-01T00:00:01Z",
+                    "payload": {
+                        "type": "web_search_call",
+                        "status": "completed",
+                        "action": {
+                            "type": "search",
+                            "query": "agent trace documentation",
+                            "sources": [
+                                {
+                                    "title": "Trace documentation",
+                                    "url": "https://example.com/traces?token=private",
+                                }
+                            ],
+                        },
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "response_item",
+                    "timestamp": "2026-01-01T00:00:02Z",
+                    "payload": {
+                        "type": "custom_tool_call",
+                        "name": "apply_patch",
+                        "call_id": "patch-1",
+                        "input": "*** Update File: showrun.py",
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "response_item",
+                    "timestamp": "2026-01-01T00:00:03Z",
+                    "payload": {
+                        "type": "custom_tool_call_output",
+                        "call_id": "patch-1",
+                        "output": "Success",
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "response_item",
+                    "timestamp": "2026-01-01T00:00:04Z",
+                    "payload": {
+                        "type": "function_call",
+                        "name": "shell_command",
+                        "call_id": "test-1",
+                        "arguments": '{"command":"uv run pytest tests/test_artifacts.py -q"}',
+                    },
+                }
+            ),
+            json.dumps(
+                {
+                    "type": "response_item",
+                    "timestamp": "2026-01-01T00:00:06Z",
+                    "payload": {
+                        "type": "function_call_output",
+                        "call_id": "test-1",
+                        "output": "10 passed",
+                    },
+                }
+            ),
+        ]
+    )
+
+    artifact = create_artifact_from_text(transcript, filename="rollout.jsonl")
+
+    assert [event.activity for event in artifact.events] == ["", "search", "file", "test"]
+    assert artifact.events[1].status == "success"
+    assert artifact.events[1].sources[0].url == "https://example.com/traces"
+    assert "?token=" not in artifact.events[1].input_preview
+    assert artifact.events[2].status == "success"
+    assert artifact.events[2].operation == "apply_patch"
+    assert artifact.events[3].status == "success"
+    assert artifact.events[3].elapsed_ms == 2000
 
 
 def test_manifest_round_trip_is_stable() -> None:

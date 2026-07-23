@@ -14,6 +14,7 @@
 <meta property="og:description" content="{{ description or 'Watch this directed agent session.' }}">
 {% if canonical_url %}<meta property="og:url" content="{{ canonical_url }}">{% endif %}
 <link rel="stylesheet" href="/static/showrun.css">
+<link rel="stylesheet" href="/static/evidence.css">
 <script defer src="/static/showrun.js"></script>
 {% end %}
 
@@ -149,7 +150,7 @@
           <button
             type="button"
             aria-label="Jump to event {{ event.id }}"
-            class="timeline-marker marker-{{ event.kind }}"
+            class="timeline-marker marker-{{ event.kind }}{% if event.activity %} marker-activity marker-{{ event.activity }}{% endif %}"
             style="left: {{ (event.at / duration * 100) | round(3) }}%"
             @click="jump({{ event.at }})"
           ></button>
@@ -263,7 +264,7 @@
       <button type="button" @click="jump({{ event.at }})">
         <time>{{ event.at | int }}s</time>
         <strong>{{ event.label }}</strong>
-        <span>{{ event.text }}</span>
+        <span>{{ event.text }}{% if event.activity %} · {{ event.activity }}{% if event.status %} {{ event.status }}{% endif %}{% endif %}</span>
       </button>
       {% end %}
     </div>

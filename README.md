@@ -12,6 +12,8 @@ CLI alias is `sr`. Portable releases use the versioned `dvd/1` artifact format.
 ## Current vertical slice
 
 - Codex rollout, canonical Showrun JSONL, and portable `dvd/1` import
+- Typed execution evidence for MCP calls, delegation, web research, sources, file changes,
+  tests, and generic tools
 - Local structural filtering and common credential redaction
 - Deterministic reading-time pacing and proposed chapters
 - Sanitization review and an event/chapter lesson director
@@ -28,6 +30,19 @@ CLI alias is `sr`. Portable releases use the versioned `dvd/1` artifact format.
 
 The curated conversation in `static/artifacts/` is the golden fixture and
 ships as the first public release.
+
+### Execution evidence
+
+Execution events stay compact in the lesson and expand into a public-safe
+evidence view with provider, operation, status, elapsed time, bounded inputs
+and outputs, and cited sources. This is proof of observable actions, not hidden
+chain-of-thought.
+
+The fields are additive to `dvd/1`, so existing artifacts continue to load.
+All imports—including already-portable `.dvd.json` files—cross the same local
+sanitization boundary. Sensitive structured keys are removed, private paths
+are replaced, URL query strings and fragments are stripped, and evidence
+previews and source lists are bounded before persistence or publication.
 
 ## Stack
 

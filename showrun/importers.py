@@ -4,14 +4,20 @@ from __future__ import annotations
 
 import hashlib
 import json
-import re
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from showrun.artifacts import TraceEvent, short_title
-
-MAX_IMPORT_BYTES = 2_000_000
+from showrun.artifacts import ACTIVITY_TYPES, TraceEvent
+from showrun.evidence import (
+    MAX_ELAPSED_MS,
+    MAX_IMPORT_BYTES,
+    OUTPUT_PREVIEW_CHARS,
+    normalize_redactions,
+    normalize_status,
+    redact_text,
+    safe_preview,
+    sanitize_sources,
+)
 
 _EVENT_META = {
     1: "The spark",
@@ -20,7 +26,7 @@ _EVENT_META = {
     4: "Complexity reframed",
     5: "The shortcut",
     6: "Architecture collapses",
-    7: "6 sources · 3 exact adjacencies",
+    7: "4 sources · 3 exact adjacencies",
     8: "Market wedge",
     9: "Audience clarified",
     10: "Positioning locks",
@@ -32,67 +38,80 @@ _EVENT_CODE = {
     6: "session.jsonl → deterministic player → HTML / GIF / MP4",
 }
 
-_HIDDEN_BLOCKS = re.compile(
-    r"<(?:in-app-browser-context|environment_context|recommended_plugins)\b.*?</"
-    r"(?:in-app-browser-context|environment_context|recommended_plugins)>",
-    flags=re.DOTALL,
-)
-_SECRET_PATTERNS = (
-    re.compile(r"\b(?:sk|rk)-[A-Za-z0-9_-]{16,}\b"),
-    re.compile(r"\bgh[pousr]_[A-Za-z0-9]{20,}\b"),
-    re.compile(r"(?i)\bBearer\s+[A-Za-z0-9._~+/=-]{12,}"),
-    re.compile(
-        r"(?i)\b(api[_-]?key|token|password|secret)\s*[:=]\s*"
-        r"([\"']?)[A-Za-z0-9._~+/=-]{8,}\2"
-    ),
-    re.compile(
-        r"-----BEGIN [A-Z ]*PRIVATE KEY-----.*?-----END [A-Z ]*PRIVATE KEY-----",
-        flags=re.DOTALL,
-    ),
-)
 
-
-def redact_text(text: str) -> str:
-    """Remove common credential shapes from user-visible imported text."""
-
-    redacted = text
-    for pattern in _SECRET_PATTERNS:
-        redacted = pattern.sub("[REDACTED]", redacted)
-    return redacted
-
-
-def _content_text(content: Any) -> str:
-    if isinstance(content, str):
-        return content
-    if not isinstance(content, list):
-        return ""
-    return "\n".join(
-        str(part.get("text") or "")
-        for part in content
-        if isinstance(part, dict) and part.get("type") in {"input_text", "output_text", "text"}
-    ).strip()
-
-
-def _clean_user_text(text: str) -> str:
-    cleaned = _HIDDEN_BLOCKS.sub("", text).strip()
-    marker = "## My request for Codex:"
-    if marker in cleaned:
-        cleaned = cleaned.split(marker, 1)[1].strip()
-    return cleaned
-
-
-def _relative_seconds(
-    timestamp: str | None,
-    started_at: datetime | None,
-) -> tuple[float, datetime | None]:
-    if not timestamp:
-        return 0, started_at
+def _event_evidence(raw_event: dict[str, Any], label: str) -> dict[str, Any]:
+    input_preview, input_redacted = safe_preview(raw_event.get("input"))
+    output_preview, output_redacted = safe_preview(
+        raw_event.get("output"),
+        limit=OUTPUT_PREVIEW_CHARS,
+    )
+    redactions = normalize_redactions(
+        raw_event.get("redactions") or (),
+        evidence_redacted=input_redacted or output_redacted,
+    )
     try:
-        parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-    except ValueError:
-        return 0, started_at
-    origin = started_at or parsed
-    return max(0, (parsed - origin).total_seconds()), origin
+        elapsed_ms = max(
+            0,
+            min(MAX_ELAPSED_MS, int(raw_event.get("elapsed_ms") or 0)),
+        )
+    except TypeError, ValueError:
+        elapsed_ms = 0
+    return {
+        "status": normalize_status(raw_event.get("status")),
+        "provider": redact_text(str(raw_event.get("provider") or ""))[:80],
+        "operation": redact_text(str(raw_event.get("operation") or label))[:120],
+        "input_preview": input_preview,
+        "output_preview": output_preview,
+        "elapsed_ms": elapsed_ms,
+        "sources": sanitize_sources(raw_event.get("sources") or ()),
+        "redactions": redactions,
+    }
+
+
+def _canonical_event(payload: dict[str, Any], event_id: int, line_number: int) -> TraceEvent:
+    record_type = payload.get("type")
+    at = float(payload.get("at", event_id - 1))
+    event_values: dict[str, Any] = {}
+    if record_type == "message":
+        message = payload.get("message") or {}
+        role = str(message.get("role") or "assistant")
+        kind = "user" if role == "user" else "assistant"
+        label = "You" if kind == "user" else "Agent"
+        text = redact_text(str(message.get("content") or ""))
+    elif record_type == "event":
+        raw_event = payload.get("event") or {}
+        raw_kind = str(raw_event.get("kind") or "tool")
+        activity = str(raw_event.get("activity") or "")
+        activity = activity if activity in ACTIVITY_TYPES else "tool"
+        kind = raw_kind if raw_kind in {"tool", "result"} else "tool"
+        if raw_kind == "decision":
+            kind = "assistant"
+            activity = "decision"
+        label = str(raw_event.get("name") or ("Tool" if kind == "tool" else "Result"))
+        text = redact_text(str(raw_event.get("content") or ""))
+        event_values = {"activity": activity, **_event_evidence(raw_event, label)}
+    else:
+        raise ValueError(f"Unsupported canonical record on line {line_number}")
+    return TraceEvent(
+        id=event_id,
+        at=at,
+        source_at=at,
+        duration=3,
+        kind=kind,
+        label=redact_text(label),
+        text=text,
+        meta=_EVENT_META.get(event_id, ""),
+        code=_EVENT_CODE.get(event_id, ""),
+        raw_preview=json.dumps(
+            {
+                "type": record_type,
+                "role": (payload.get("message") or {}).get("role"),
+                "name": (payload.get("event") or {}).get("name"),
+            },
+            separators=(",", ":"),
+        ),
+        **event_values,
+    )
 
 
 def _canonical_session(
@@ -103,123 +122,15 @@ def _canonical_session(
     session_id = fallback_id
     events: list[TraceEvent] = []
     for line_number, payload in enumerate(records, 1):
-        record_type = payload.get("type")
-        if record_type == "session":
+        if payload.get("type") == "session":
             title = str(payload.get("name") or title)
             session_id = str(payload.get("id") or session_id)
             continue
-
-        event_id = len(events) + 1
-        at = float(payload.get("at", event_id - 1))
-        if record_type == "message":
-            message = payload.get("message") or {}
-            role = str(message.get("role") or "assistant")
-            kind = "user" if role == "user" else "assistant"
-            label = "You" if kind == "user" else "Agent"
-            text = redact_text(str(message.get("content") or ""))
-        elif record_type == "event":
-            raw_event = payload.get("event") or {}
-            raw_kind = str(raw_event.get("kind") or "tool")
-            kind = raw_kind if raw_kind in {"tool", "result"} else "tool"
-            label = str(raw_event.get("name") or ("Tool" if kind == "tool" else "Result"))
-            text = redact_text(str(raw_event.get("content") or ""))
-        else:
-            raise ValueError(f"Unsupported canonical record on line {line_number}")
-
-        preview = json.dumps(
-            {
-                "type": record_type,
-                "role": (payload.get("message") or {}).get("role"),
-                "name": (payload.get("event") or {}).get("name"),
-            },
-            separators=(",", ":"),
-        )
-        events.append(
-            TraceEvent(
-                id=event_id,
-                at=at,
-                source_at=at,
-                duration=3,
-                kind=kind,
-                label=label,
-                text=text,
-                meta=_EVENT_META.get(event_id, ""),
-                code=_EVENT_CODE.get(event_id, ""),
-                raw_preview=preview,
-            )
-        )
+        events.append(_canonical_event(payload, len(events) + 1, line_number))
     return title, session_id, tuple(events)
 
 
-def _codex_session(
-    records: list[dict[str, Any]],
-    fallback_id: str,
-) -> tuple[str, str, tuple[TraceEvent, ...]]:
-    session_id = fallback_id
-    source_events: list[TraceEvent] = []
-    started_at: datetime | None = None
-
-    for payload in records:
-        if payload.get("type") == "session_meta":
-            metadata = payload.get("payload") or {}
-            session_id = str(metadata.get("id") or metadata.get("session_id") or session_id)
-            continue
-        if payload.get("type") != "response_item":
-            continue
-
-        item = payload.get("payload") or {}
-        item_type = item.get("type")
-        kind = ""
-        label = ""
-        text = ""
-        if item_type == "message" and item.get("role") in {"user", "assistant"}:
-            role = str(item["role"])
-            text = _content_text(item.get("content"))
-            if role == "user":
-                text = _clean_user_text(text)
-            text = redact_text(text)
-            kind = role
-            label = "You" if role == "user" else "Codex"
-        elif item_type == "function_call":
-            tool_name = str(item.get("name") or "tool")
-            kind = "tool"
-            label = tool_name
-            text = f"Ran {tool_name}"
-        if not text:
-            continue
-
-        source_at, started_at = _relative_seconds(payload.get("timestamp"), started_at)
-        event_id = len(source_events) + 1
-        source_events.append(
-            TraceEvent(
-                id=event_id,
-                at=source_at,
-                source_at=source_at,
-                duration=3,
-                kind=kind,
-                label=label,
-                text=text,
-                meta="Imported from Codex",
-                raw_preview=json.dumps(
-                    {"type": item_type, "role": item.get("role"), "name": item.get("name")},
-                    separators=(",", ":"),
-                ),
-            )
-        )
-
-    title_source = next((event.text for event in source_events if event.kind == "user"), "")
-    return short_title(title_source, "Imported Codex session"), session_id, tuple(source_events)
-
-
-def parse_session_text(
-    text: str,
-    *,
-    filename: str = "session.jsonl",
-) -> tuple[str, str, str, tuple[TraceEvent, ...], tuple[str, ...]]:
-    """Detect and normalize canonical Showrun or Codex JSONL."""
-
-    if len(text.encode("utf-8")) > MAX_IMPORT_BYTES:
-        raise ValueError("Session exceeds the 2 MB import limit")
+def _jsonl_records(text: str) -> tuple[list[dict[str, Any]], list[str]]:
     records: list[dict[str, Any]] = []
     warnings: list[str] = []
     lines = text.splitlines()
@@ -235,22 +146,41 @@ def parse_session_text(
             raise ValueError(f"Invalid JSON on line {line_number}") from exc
         if isinstance(payload, dict):
             records.append(payload)
+    return records, warnings
 
+
+def parse_session_text(
+    text: str,
+    *,
+    filename: str = "session.jsonl",
+) -> tuple[str, str, str, tuple[TraceEvent, ...], tuple[str, ...]]:
+    """Detect and normalize canonical Showrun or Codex JSONL."""
+
+    if len(text.encode("utf-8")) > MAX_IMPORT_BYTES:
+        raise ValueError("Session exceeds the 2 MB import limit")
+    records, warnings = _jsonl_records(text)
     if not records:
         raise ValueError("The session contains no JSONL records")
     digest = hashlib.sha256(text.encode()).hexdigest()[:16]
     fallback_id = f"{Path(filename).stem}-{digest}"
     record_types = {str(record.get("type") or "") for record in records}
     if "response_item" in record_types or "session_meta" in record_types:
-        title, session_id, events = _codex_session(records, fallback_id)
+        from showrun.codex_importer import parse_codex_session
+
+        title, session_id, events = parse_codex_session(records, fallback_id)
         source_format = "codex-jsonl"
-        warnings.append("System instructions and raw tool outputs were excluded locally.")
+        warnings.append("System instructions and unbounded raw tool outputs were excluded locally.")
     else:
         title, session_id, events = _canonical_session(records, fallback_id)
         source_format = "showrun-jsonl"
-
     if not events:
         raise ValueError("The session contains no replayable user, assistant, or tool events")
-    if any("[REDACTED]" in event.text for event in events):
+    if any(
+        "[REDACTED]" in event.text
+        or event.redactions
+        or "[REDACTED]" in event.input_preview
+        or "[REDACTED]" in event.output_preview
+        for event in events
+    ):
         warnings.append("Potential credentials were redacted locally.")
     return title, session_id, source_format, events, tuple(warnings)

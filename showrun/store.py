@@ -435,33 +435,34 @@ class ShowrunStore:
         resolved_lesson_id = lesson_id or f"lesson_{uuid4().hex}"
         manifest_json = artifact.to_json()
         digest = source_sha256 or hashlib.sha256(manifest_json.encode()).hexdigest()
-        await self.db.execute(
-            "INSERT INTO recordings "
-            "(id, session_id, title, source_format, source_sha256, event_count, created_at, "
-            "workspace_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-            resolved_recording_id,
-            artifact.session_id,
-            artifact.title,
-            artifact.source_format,
-            digest,
-            len(artifact.events),
-            now,
-            workspace_id,
-        )
-        await self.db.execute(
-            "INSERT INTO lessons "
-            "(id, recording_id, title, description, status, visibility, revision, "
-            "manifest_json, created_at, updated_at, workspace_id) "
-            "VALUES (?, ?, ?, ?, 'draft', 'private', 1, ?, ?, ?, ?)",
-            resolved_lesson_id,
-            resolved_recording_id,
-            artifact.title,
-            artifact.description,
-            manifest_json,
-            now,
-            now,
-            workspace_id,
-        )
+        async with self.db.transaction():
+            await self.db.execute(
+                "INSERT INTO recordings "
+                "(id, session_id, title, source_format, source_sha256, event_count, created_at, "
+                "workspace_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                resolved_recording_id,
+                artifact.session_id,
+                artifact.title,
+                artifact.source_format,
+                digest,
+                len(artifact.events),
+                now,
+                workspace_id,
+            )
+            await self.db.execute(
+                "INSERT INTO lessons "
+                "(id, recording_id, title, description, status, visibility, revision, "
+                "manifest_json, created_at, updated_at, workspace_id) "
+                "VALUES (?, ?, ?, ?, 'draft', 'private', 1, ?, ?, ?, ?)",
+                resolved_lesson_id,
+                resolved_recording_id,
+                artifact.title,
+                artifact.description,
+                manifest_json,
+                now,
+                now,
+                workspace_id,
+            )
         result = await self.get_lesson(resolved_lesson_id)
         if result is None:
             raise RuntimeError("Draft was not persisted")
@@ -522,18 +523,11 @@ class ShowrunStore:
         query: str = "",
         status: str = "all",
     ) -> list[LessonCard]:
+        if public_only:
+            return await self._public_lesson_cards(query=query, status=status)
         clauses: list[str] = []
         params: list[str] = []
-        if public_only:
-            clauses.extend(
-                (
-                    "l.status = 'published'",
-                    "l.visibility = 'public'",
-                    "EXISTS (SELECT 1 FROM releases active "
-                    "WHERE active.lesson_id = l.id AND active.disabled_at IS NULL)",
-                )
-            )
-        elif workspace_id is not None:
+        if workspace_id is not None:
             clauses.append("l.workspace_id = ?")
             params.append(workspace_id)
         if query.strip():
@@ -557,6 +551,48 @@ class ShowrunStore:
             f"{where} ORDER BY l.updated_at DESC, l.id ASC",
             *params,
         )
+
+    async def _public_lesson_cards(self, *, query: str, status: str) -> list[LessonCard]:
+        if status == "draft":
+            return []
+        releases = await self.db.fetch(
+            ReleaseRecord,
+            "SELECT rr.id, rr.lesson_id, rr.revision, rr.slug, rr.visibility, "
+            "rr.manifest_json, rr.published_at, rr.disabled_at FROM releases rr "
+            "WHERE rr.visibility = 'public' AND rr.disabled_at IS NULL "
+            "AND NOT EXISTS (SELECT 1 FROM releases newer "
+            "WHERE newer.lesson_id = rr.lesson_id AND newer.visibility = 'public' "
+            "AND newer.disabled_at IS NULL AND "
+            "(newer.published_at > rr.published_at OR "
+            "(newer.published_at = rr.published_at AND newer.id > rr.id))) "
+            "ORDER BY rr.published_at DESC, rr.id DESC",
+        )
+        needle = query.strip().lower()[:100]
+        cards: list[LessonCard] = []
+        for release in releases:
+            artifact = release.artifact
+            if needle and needle not in f"{artifact.title} {artifact.description}".lower():
+                continue
+            release_count = await self.db.fetch_val(
+                "SELECT COUNT(*) FROM releases WHERE lesson_id = ?",
+                release.lesson_id,
+            )
+            cards.append(
+                LessonCard(
+                    id=release.lesson_id,
+                    title=artifact.title,
+                    description=artifact.description,
+                    status="published",
+                    visibility="public",
+                    revision=release.revision,
+                    event_count=len(artifact.events),
+                    updated_at=release.published_at,
+                    published_at=release.published_at,
+                    release_slug=release.slug,
+                    release_count=int(release_count or 0),
+                )
+            )
+        return cards
 
     async def get_lesson(
         self,
@@ -608,68 +644,72 @@ class ShowrunStore:
     ) -> ReleaseRecord:
         if visibility not in {"unlisted", "public"}:
             raise ValueError("Published visibility must be unlisted or public")
-        lesson = await self.get_lesson(lesson_id, workspace_id=workspace_id)
-        if lesson is None:
-            raise LookupError("Lesson not found")
-        existing = await self.get_release_for_revision(
-            lesson.id,
-            lesson.revision,
-            visibility,
-        )
-        if existing is not None:
-            if existing.disabled_at is not None:
-                restored_at = _now()
-                await self.db.execute(
-                    "UPDATE releases SET disabled_at = NULL, published_at = ? WHERE id = ?",
-                    restored_at,
-                    existing.id,
+        release_slug = ""
+        async with self.db.transaction():
+            lesson = await self.get_lesson(lesson_id, workspace_id=workspace_id)
+            if lesson is None:
+                raise LookupError("Lesson not found")
+            existing = await self.get_release_for_revision(
+                lesson.id,
+                lesson.revision,
+                visibility,
+            )
+            published_at = _now()
+            if existing is not None:
+                release_slug = existing.slug
+                if existing.disabled_at is not None:
+                    await self.db.execute(
+                        "UPDATE releases SET disabled_at = NULL, published_at = ? WHERE id = ?",
+                        published_at,
+                        existing.id,
+                    )
+            else:
+                release = ReleaseRecord(
+                    id=f"release_{uuid4().hex}",
+                    lesson_id=lesson.id,
+                    revision=lesson.revision,
+                    slug=_slugify(lesson.title),
+                    visibility=visibility,
+                    manifest_json=lesson.manifest_json,
+                    published_at=published_at,
+                    disabled_at=None,
                 )
-                await self.db.execute(
-                    "UPDATE lessons SET status = 'published', visibility = ?, "
-                    "published_at = ?, updated_at = ? WHERE id = ?",
-                    visibility,
-                    restored_at,
-                    restored_at,
-                    lesson.id,
+                inserted = await self.db.execute(
+                    "INSERT INTO releases "
+                    "(id, lesson_id, revision, slug, visibility, manifest_json, published_at) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?) "
+                    "ON CONFLICT(lesson_id, revision, visibility) DO NOTHING",
+                    release.id,
+                    release.lesson_id,
+                    release.revision,
+                    release.slug,
+                    release.visibility,
+                    release.manifest_json,
+                    release.published_at,
                 )
-                restored = await self.get_release(existing.slug)
-                if restored is None:
-                    raise RuntimeError("Release was not restored")
-                return restored
-            return existing
-
-        published_at = _now()
-        release = ReleaseRecord(
-            id=f"release_{uuid4().hex}",
-            lesson_id=lesson.id,
-            revision=lesson.revision,
-            slug=_slugify(lesson.title),
-            visibility=visibility,
-            manifest_json=lesson.manifest_json,
-            published_at=published_at,
-            disabled_at=None,
-        )
-        await self.db.execute(
-            "INSERT INTO releases "
-            "(id, lesson_id, revision, slug, visibility, manifest_json, published_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?)",
-            release.id,
-            release.lesson_id,
-            release.revision,
-            release.slug,
-            release.visibility,
-            release.manifest_json,
-            release.published_at,
-        )
-        await self.db.execute(
-            "UPDATE lessons SET status = 'published', visibility = ?, published_at = ?, "
-            "updated_at = ? WHERE id = ?",
-            visibility,
-            published_at,
-            published_at,
-            lesson.id,
-        )
-        return release
+                if inserted:
+                    release_slug = release.slug
+                else:
+                    winner = await self.get_release_for_revision(
+                        lesson.id,
+                        lesson.revision,
+                        visibility,
+                    )
+                    if winner is None:
+                        raise RuntimeError("Concurrent release was not persisted")
+                    release_slug = winner.slug
+            await self.db.execute(
+                "UPDATE lessons SET status = 'published', visibility = ?, published_at = ?, "
+                "updated_at = ? WHERE id = ?",
+                visibility,
+                published_at,
+                published_at,
+                lesson.id,
+            )
+        result = await self.get_release(release_slug)
+        if result is None:
+            raise RuntimeError("Release was not persisted")
+        return result
 
     async def list_releases(self, lesson_id: str, *, workspace_id: str) -> list[ReleaseRecord]:
         return await self.db.fetch(
@@ -684,28 +724,38 @@ class ShowrunStore:
         )
 
     async def unpublish_release(self, slug: str, *, workspace_id: str) -> str:
-        row = await self.db.fetch_one(
-            _ReleaseOwnerRow,
-            "SELECT rr.id, rr.lesson_id FROM releases rr "
-            "JOIN lessons l ON l.id = rr.lesson_id "
-            "WHERE rr.slug = ? AND l.workspace_id = ? AND rr.disabled_at IS NULL",
-            slug,
-            workspace_id,
-        )
-        if row is None:
-            raise LookupError("Release not found")
         now = _now()
         async with self.db.transaction():
+            row = await self.db.fetch_one(
+                _ReleaseOwnerRow,
+                "SELECT rr.id, rr.lesson_id FROM releases rr "
+                "JOIN lessons l ON l.id = rr.lesson_id "
+                "WHERE rr.slug = ? AND l.workspace_id = ? AND rr.disabled_at IS NULL",
+                slug,
+                workspace_id,
+            )
+            if row is None:
+                raise LookupError("Release not found")
             await self.db.execute(
                 "UPDATE releases SET disabled_at = ? WHERE id = ?",
                 now,
                 row.id,
             )
-            active = await self.db.fetch_val(
-                "SELECT COUNT(*) FROM releases WHERE lesson_id = ? AND disabled_at IS NULL",
+            remaining_visibility = await self.db.fetch_val(
+                "SELECT visibility FROM releases "
+                "WHERE lesson_id = ? AND disabled_at IS NULL "
+                "ORDER BY CASE visibility WHEN 'public' THEN 0 ELSE 1 END LIMIT 1",
                 row.lesson_id,
             )
-            if not int(active or 0):
+            if remaining_visibility:
+                await self.db.execute(
+                    "UPDATE lessons SET status = 'published', visibility = ?, "
+                    "updated_at = ? WHERE id = ?",
+                    str(remaining_visibility),
+                    now,
+                    row.lesson_id,
+                )
+            else:
                 await self.db.execute(
                     "UPDATE lessons SET status = 'draft', visibility = 'private', "
                     "updated_at = ? WHERE id = ?",

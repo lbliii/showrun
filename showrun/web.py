@@ -17,6 +17,7 @@ from chirp.middleware.stack import secure_stack
 from showrun.artifacts import load_artifact
 from showrun.auth import verify_api_token
 from showrun.embed_policy import PublicEmbedPolicy
+from showrun.golden import sync_golden
 from showrun.routes import ShowrunRoutes
 from showrun.store import ShowrunStore
 
@@ -87,7 +88,7 @@ def create_app(
             ARTIFACTS / "showrun-session.jsonl",
             ARTIFACTS / "showrun-lesson.tape",
         )
-        await store.seed_golden(golden)
+        await sync_golden(store, golden)
         await store.publish("lesson_golden", "public")
 
     ShowrunRoutes(application, store).register()

@@ -12,14 +12,9 @@ from chirp.testing import TestClient
 from showrun.artifacts import create_artifact_from_text
 from showrun.auth import password_hash
 from showrun.web import create_app
+from tests.session_fixtures import RICH_SESSION as _SESSION
 
 _CSRF_RE = re.compile(r'name="_csrf_token" value="([^"]+)"')
-_SESSION = """\
-{"type":"session","id":"import-test","name":"Imported test session"}
-{"type":"message","at":0,"message":{"role":"user","content":"Can this become a show?"}}
-{"type":"message","at":8,"message":{"role":"assistant","content":"Yes. Normalize it first."}}
-{"type":"event","at":12,"event":{"kind":"tool","name":"pytest","content":"Tests passed."}}
-"""
 
 
 def _application(database: Path):
@@ -158,6 +153,7 @@ async def test_director_can_import_preview_publish_and_embed(
         slug = watch_path.rsplit("/", 1)[-1]
         watch = await client.get(watch_path)
         embed = await client.get(f"/embed/{slug}")
+        evidence_css = await client.get("/static/evidence.css")
         manifest = await client.get(f"/releases/{slug}/dvd.json")
         oembed = await client.get(f"/oembed?url=http://testserver/watch/{slug}")
         started = await client.post(
@@ -191,10 +187,25 @@ async def test_director_can_import_preview_publish_and_embed(
 
     assert "A published Showrun" in lesson.text
     assert "Publish this revision" in lesson.text
-    assert watch.status == embed.status == manifest.status == oembed.status == 200
+    assert (
+        watch.status
+        == embed.status
+        == evidence_css.status
+        == manifest.status
+        == oembed.status
+        == 200
+    )
     assert started.status == completed.status == chapter.status == 204
     assert "showrunPlayer" in watch.text
-    assert "Show tool output" in watch.text
+    assert "Inspect evidence" in watch.text
+    assert "execution-card activity-test" in watch.text
+    assert "/static/evidence.css" in watch.text
+    assert ".evidence-details" in evidence_css.text
+    assert "Sanitized input" in watch.text
+    assert "Sanitized output" in watch.text
+    assert "pytest -q" in watch.text
+    assert "https://docs.example/test-report" in watch.text
+    assert "?token=private" not in watch.text
     assert "Copy embed" in watch.text
     assert "HTML iframe" in watch.text
     assert "Web component" in watch.text
