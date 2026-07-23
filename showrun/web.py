@@ -69,6 +69,7 @@ def create_app(
             ARTIFACTS / "showrun-lesson.tape",
         )
         await store.seed_golden(golden)
+        await store.publish("lesson_golden", "public")
 
     ShowrunRoutes(application, store, resolved_token).register()
     return application

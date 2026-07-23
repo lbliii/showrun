@@ -1,56 +1,97 @@
 # Showrun
 
-**Showrun turns agent runs into shows people can learn from.**
+**Turn agent runs into shows people can learn from.**
 
-This is the Chirp-stack reconstruction of AgentTape prototype 1. The source
-conversation is stored as immutable JSONL. A separate `.tape` file owns
-chapters, captions, notes, pacing, highlights, assertions, and intended output
-formats.
+Showrun imports agent-session JSONL, removes host-only scaffolding and likely
+credentials locally, creates a smart-paced first cut, saves it to a private
+library, and publishes immutable watch pages and documentation embeds.
 
-The product, project, and package are named `showrun`. The planned CLI uses
-`showrun` as its canonical command and `sr` as its short alias. Published
-portable replay artifacts use the versioned `.dvd` media format.
+The product, project, package, and primary CLI are named `showrun`. The short
+CLI alias is `sr`. Portable releases use the versioned `dvd/1` artifact format.
+
+## Current vertical slice
+
+- Codex rollout and canonical Showrun JSONL import
+- Local structural filtering and common credential redaction
+- Deterministic reading-time pacing and proposed chapters
+- Persistent draft library
+- Director-token authentication
+- Public and unlisted immutable releases
+- Responsive watch and iframe embed pages
+- oEmbed discovery and response
+- Downloadable `.dvd.json` release manifests
+- `showrun` and `sr` local CLI entry points
+
+The curated conversation in `static/artifacts/` is the golden fixture and
+ships as the first public release.
 
 ## Stack
 
-- Chirp for routing, content negotiation, static assets, health checks, and contracts
-- Kida for server-rendered components and templates
-- Chirp UI for the application runtime and shared UI primitives
-- Alpine for local playback state
-- Patitas and Rosettes for Markdown and highlighted learning content
-- Plain CSS for the editorial player design
-
-There is no database, account system, or Node build pipeline.
+- Python 3.14 and `uv`
+- Chirp and Pounce
+- Kida and Chirp UI
+- Patitas and Rosettes
+- Alpine.js
+- SQLite for local development
+- PostgreSQL on Railway
+- Railpack
 
 ## Run locally
-
-Requires Python 3.14 and `uv`.
 
 ```bash
 uv sync --frozen
 uv run python app.py
 ```
 
-Open <http://127.0.0.1:8000>.
+Open <http://127.0.0.1:8000>. The local director token is `showrun-local`.
+
+To use an explicit local configuration:
+
+```bash
+SHOWRUN_ADMIN_TOKEN=replace-me \
+CHIRP_SECRET_KEY=replace-with-a-long-random-value \
+uv run python app.py
+```
+
+## CLI
+
+Both executable names invoke the same CLI:
+
+```bash
+showrun --version
+sr --version
+
+showrun inspect ~/.codex/sessions/YYYY/MM/DD/rollout-....jsonl
+showrun import session.jsonl --output lesson.dvd.json
+showrun serve --port 8000
+```
+
+`showrun import` works locally and never publishes automatically. Hosted login
+and upload commands come after the deployed API authentication contract.
 
 ## Verify
 
 ```bash
 uv run ruff check .
 uv run ruff format . --check
-uv run ty check app.py showrun_artifacts.py
+uv run ty check showrun app.py
 uv run pytest -q
 env PYTHONPATH=. uv run chirp check app:app
+uv build
 ```
 
 ## Railway
 
-`railway.json` follows the source-complete Chirp template pattern:
+`railway.json` uses Railpack, starts `python app.py`, and checks `/ready`.
 
-- RAILPACK build
-- `python app.py`
-- `/ready` health check
-- one web service and no required variables
+Production needs:
 
-Showrun can add PostgreSQL later when the editor needs durable projects. The player
-and portable artifacts do not require it.
+- A PostgreSQL service providing `DATABASE_URL`
+- `SHOWRUN_ADMIN_TOKEN`
+- `CHIRP_SECRET_KEY`
+- `CHIRP_ENV=production`
+
+Raw imported transcripts are not persisted. The current slice stores the
+sanitized `dvd/1` manifest and a source hash in PostgreSQL. Railway object
+storage remains a later requirement for raw opt-in archives and generated
+video assets.

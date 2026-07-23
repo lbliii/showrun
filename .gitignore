@@ -3,5 +3,9 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 .ty/
+dist/
+*.egg-info/
 *.pyc
 *.db
+*.db-shm
+*.db-wal

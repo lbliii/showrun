@@ -66,8 +66,7 @@ async def test_public_library_and_readiness(tmp_path: Path) -> None:
 
     assert library.status == ready.status == css.status == 200
     assert "Turn agent runs into shows" in library.text
-    assert "No published Showruns yet" in library.text
-    assert "Could agent sessions become documentation?" not in library.text
+    assert "Could agent sessions become documentation?" in library.text
 
 
 async def test_director_can_import_preview_publish_and_embed(tmp_path: Path) -> None:
