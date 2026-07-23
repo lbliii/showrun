@@ -110,7 +110,11 @@ async def test_public_library_and_readiness(tmp_path: Path) -> None:
     assert "style-src 'self' 'unsafe-inline'" in csp_headers[0]
 
 
-async def test_director_can_import_preview_publish_and_embed(tmp_path: Path) -> None:
+async def test_director_can_import_preview_publish_and_embed(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("SHOWRUN_PUBLIC_URL", "https://showrun.example")
     app = _application(tmp_path / "flow.db")
     async with TestClient(app) as client:
         cookie = await _signup(client)
@@ -163,6 +167,7 @@ async def test_director_can_import_preview_publish_and_embed(tmp_path: Path) -> 
     assert "navigator.clipboard.writeText($el.dataset.embedCode)" in watch.text
     assert 'data-embed-code="&lt;iframe' in watch.text
     assert f"/embed/{slug}" in watch.text
+    assert f"https://showrun.example/embed/{slug}" in watch.text
     assert "navigator.clipboard.writeText(&#34;" not in watch.text
     assert "embed-mode" in embed.text
     assert 'data-chirp="alpine"' in watch.text

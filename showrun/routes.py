@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import html
 import json
+import os
 from typing import Any
 
 from chirp.app import App
@@ -40,6 +41,14 @@ def _json_response(payload: dict[str, Any], *, status: int = 200) -> Response:
 
 
 def _base_url(request: Request) -> str:
+    configured = os.environ.get("SHOWRUN_PUBLIC_URL", "").strip().rstrip("/")
+    if configured:
+        return configured
+    railway_domain = os.environ.get("RAILWAY_PUBLIC_DOMAIN", "").strip().rstrip("/")
+    if railway_domain:
+        if railway_domain.startswith(("http://", "https://")):
+            return railway_domain
+        return f"https://{railway_domain}"
     scheme = request.headers.get("x-forwarded-proto", "http").split(",", 1)[0]
     host = request.headers.get("host", "127.0.0.1:8000")
     return f"{scheme}://{host}"
