@@ -73,7 +73,14 @@ def _player_context(
     mdx_code: str = "",
     component_code: str = "",
     theme: str = "auto",
+    release_slug: str = "",
 ) -> dict[str, Any]:
+    player_config = artifact.player_config()
+    if release_slug:
+        player_config["telemetry"] = {
+            "endpoint": "/api/v1/events",
+            "releaseSlug": release_slug,
+        }
     return {
         "canonical_url": canonical_url,
         "chapters": artifact.chapters,
@@ -88,7 +95,7 @@ def _player_context(
         "markdown_code": markdown_code,
         "mdx_code": mdx_code,
         "component_code": component_code,
-        "player_config": artifact.player_config(),
+        "player_config": player_config,
         "source_format": artifact.source_format,
         "state": state,
         "title": artifact.title,
@@ -130,6 +137,11 @@ class ShowrunRoutes:
             name="api.imports.create",
         )(self.api_import_session)
         self.app.route("/api/v1/lessons", name="api.lessons.index")(self.api_lessons)
+        self.app.route(
+            "/api/v1/events",
+            methods=["POST"],
+            name="api.events.create",
+        )(self.playback_event)
         self.app.route("/lessons/{lesson_id}", name="lessons.show")(self.lesson_page)
         self.app.route("/lessons/{lesson_id}/edit", name="lessons.edit")(self.edit_lesson_page)
         self.app.route(
@@ -444,6 +456,45 @@ class ShowrunRoutes:
         lessons = await self.store.list_lessons(workspace_id=user.workspace_id)
         return _json_response({"lessons": [asdict(lesson) for lesson in lessons]})
 
+    async def playback_event(self, request: Request) -> Response:
+        try:
+            payload = await request.json()
+        except json.JSONDecodeError, UnicodeDecodeError, ValueError:
+            return _json_response({"error": "Send a JSON request body."}, status=400)
+        if not isinstance(payload, dict):
+            return _json_response({"error": "The request body must be a JSON object."}, status=400)
+        slug = str(payload.get("releaseSlug") or "")[:100]
+        event_name = str(payload.get("event") or "")
+        allowed = {
+            "playback.started",
+            "playback.completed",
+            "chapter.viewed",
+        }
+        if event_name not in allowed:
+            return _json_response({"error": "Unknown playback event."}, status=422)
+        release = await self.store.get_release(slug)
+        if release is None:
+            return _json_response({"error": "Showrun not found."}, status=404)
+        properties: dict[str, str | int | float | bool] = {}
+        origin = str(payload.get("origin") or "")[:255]
+        if origin.startswith(("http://", "https://")):
+            properties["origin"] = origin
+        if event_name == "chapter.viewed":
+            try:
+                chapter = int(payload.get("chapter") or 0)
+            except (TypeError, ValueError):
+                chapter = 0
+            if not 1 <= chapter <= len(release.artifact.chapters):
+                return _json_response({"error": "Invalid chapter."}, status=422)
+            properties["chapter"] = chapter
+        await self.store.record_usage(
+            event_name,
+            lesson_id=release.lesson_id,
+            release_id=release.id,
+            properties=properties,
+        )
+        return Response("", status=204)
+
     async def edit_lesson_page(
         self,
         lesson_id: str,
@@ -631,8 +682,15 @@ class ShowrunRoutes:
         markdown_code = (
             f"[Watch {_markdown_label(release.artifact.title)} on Showrun]({canonical})"
         )
+        user = self.browser_user()
+        lesson = await self.store.get_lesson(release.lesson_id)
+        author_preview = bool(
+            user is not None
+            and lesson is not None
+            and lesson.workspace_id == user.workspace_id
+        )
         await self.store.record_usage(
-            "release.viewed",
+            "release.author_previewed" if author_preview else "release.viewed",
             lesson_id=release.lesson_id,
             release_id=release.id,
         )
@@ -648,6 +706,7 @@ class ShowrunRoutes:
                 markdown_code=markdown_code,
                 mdx_code=mdx_code,
                 component_code=component_code,
+                release_slug=release.slug,
             ),
         )
 
@@ -673,6 +732,7 @@ class ShowrunRoutes:
                 embed=True,
                 canonical_url=f"{base_url}/watch/{release.slug}",
                 theme=theme,
+                release_slug=release.slug,
             ),
         )
 

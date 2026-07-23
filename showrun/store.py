@@ -56,6 +56,12 @@ class UsageMetrics:
     publishes: int = 0
     views: int = 0
     embeds: int = 0
+    plays: int = 0
+    completions: int = 0
+
+    @property
+    def completion_rate(self) -> int:
+        return round(self.completions / self.plays * 100) if self.plays else 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -279,6 +285,8 @@ class ShowrunStore:
             publishes=await count("lesson.published"),
             views=await count("release.viewed"),
             embeds=await count("release.embedded"),
+            plays=await count("playback.started"),
+            completions=await count("playback.completed"),
         )
 
     async def create_draft(

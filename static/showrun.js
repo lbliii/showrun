@@ -10,10 +10,12 @@ document.addEventListener("alpine:init", () => {
     toast: "",
     timer: null,
     toastTimer: null,
+    viewedChapters: new Set(),
 
     init() {
       const node = document.getElementById(configId);
       this.config = JSON.parse(node.textContent);
+      this.trackChapter();
     },
 
     destroy() {
@@ -57,7 +59,10 @@ document.addEventListener("alpine:init", () => {
     toggle() {
       if (this.time >= this.duration) this.time = 0;
       this.playing = !this.playing;
-      if (this.playing) this.startTimer();
+      if (this.playing) {
+        this.trackOnce("playback.started");
+        this.startTimer();
+      }
       else this.stopTimer();
     },
 
@@ -69,9 +74,11 @@ document.addEventListener("alpine:init", () => {
           this.time = this.duration;
           this.playing = false;
           this.stopTimer();
+          this.trackOnce("playback.completed");
           return;
         }
         this.time = next;
+        this.trackChapter();
         this.scrollToActive();
       }, 100);
     },
@@ -85,6 +92,7 @@ document.addEventListener("alpine:init", () => {
       this.time = Math.max(0, Math.min(this.duration, Number(at)));
       this.playing = false;
       this.stopTimer();
+      this.trackChapter();
       this.scrollToActive();
     },
 
@@ -115,6 +123,59 @@ document.addEventListener("alpine:init", () => {
       this.toastTimer = window.setTimeout(() => {
         this.toast = "";
       }, 2400);
+    },
+
+    trackOnce(event) {
+      const slug = this.config?.telemetry?.releaseSlug;
+      if (!slug) return;
+      const key = `showrun:${slug}:${event}`;
+      try {
+        if (window.sessionStorage.getItem(key)) return;
+        window.sessionStorage.setItem(key, "1");
+      } catch {
+        // Playback must keep working when an embed blocks storage.
+      }
+      this.track(event);
+    },
+
+    trackChapter() {
+      if (!this.config?.telemetry) return;
+      const chapter = this.config.chapters.findIndex(
+        (candidate) => candidate.at === this.activeChapter.at,
+      ) + 1;
+      if (!chapter || this.viewedChapters.has(chapter)) return;
+      this.viewedChapters.add(chapter);
+      this.track("chapter.viewed", { chapter });
+    },
+
+    track(event, properties = {}) {
+      const telemetry = this.config?.telemetry;
+      if (!telemetry) return;
+      let origin = "";
+      try {
+        origin = document.referrer ? new URL(document.referrer).origin : "";
+      } catch {
+        origin = "";
+      }
+      const body = JSON.stringify({
+        event,
+        releaseSlug: telemetry.releaseSlug,
+        origin,
+        ...properties,
+      });
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(
+          telemetry.endpoint,
+          new Blob([body], { type: "application/json" }),
+        );
+        return;
+      }
+      fetch(telemetry.endpoint, {
+        method: "POST",
+        body,
+        headers: { "Content-Type": "application/json" },
+        keepalive: true,
+      }).catch(() => {});
     },
   }));
 });
