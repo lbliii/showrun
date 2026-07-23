@@ -3,7 +3,7 @@
 from chirp.testing import TestClient
 
 from app import app
-from showrun_artifacts import load_artifact
+from showrun.artifacts import load_artifact
 
 
 async def test_home_renders_player_and_stack() -> None:
