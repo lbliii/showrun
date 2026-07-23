@@ -35,6 +35,7 @@
 
 {% def trace_row(event) %}
 <button
+  type="button"
   class="trace-row"
   :class="{ 'revealed': time >= {{ event.at }}, 'current': activeEvent.id === {{ event.id }} }"
   @click="jump({{ event.at }})"

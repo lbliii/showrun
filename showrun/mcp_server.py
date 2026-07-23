@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import sys
+from importlib.metadata import version
 from pathlib import Path
 from typing import Any, TextIO
 
@@ -112,7 +113,7 @@ def handle_message(message: dict[str, Any]) -> dict[str, object] | None:
         result: object = {
             "protocolVersion": PROTOCOL_VERSION,
             "capabilities": {"tools": {"listChanged": False}},
-            "serverInfo": {"name": "showrun", "version": "0.1.0"},
+            "serverInfo": {"name": "showrun", "version": version("showrun")},
         }
     elif method == "tools/list":
         result = {"tools": TOOLS}

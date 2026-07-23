@@ -11,7 +11,7 @@ CLI alias is `sr`. Portable releases use the versioned `dvd/1` artifact format.
 
 ## Current vertical slice
 
-- Codex rollout and canonical Showrun JSONL import
+- Codex rollout, canonical Showrun JSONL, and portable `dvd/1` import
 - Local structural filtering and common credential redaction
 - Deterministic reading-time pacing and proposed chapters
 - Sanitization review and an event/chapter lesson director
@@ -20,11 +20,11 @@ CLI alias is `sr`. Portable releases use the versioned `dvd/1` artifact format.
 - Hashed, revocable API tokens for CLI access
 - Public and unlisted immutable releases
 - Responsive watch pages plus HTML, MDX, Markdown, and web-component embeds
-- Workspace import, publish, watch, embed, chapter, and completion measurements
+- Private lesson analytics for chapter reach, origins, completion, and releases
 - Searchable draft/published library with release history and unpublishing
 - oEmbed discovery and response
 - Downloadable `.dvd.json` release manifests
-- `showrun` and `sr` CLI login, inspect, import, push, latest, MCP, and serve workflows
+- `showrun` and `sr` CLI login, inspect, validate, import, push, latest, MCP, and serve workflows
 
 The curated conversation in `static/artifacts/` is the golden fixture and
 ships as the first public release.
@@ -66,24 +66,28 @@ sr --version
 
 showrun inspect ~/.codex/sessions/YYYY/MM/DD/rollout-....jsonl
 showrun import session.jsonl --output lesson.dvd.json
+showrun validate lesson.dvd.json --json
 showrun login --host https://showrun-production.up.railway.app
 showrun push session.jsonl --title "A useful agent workflow"
+showrun push lesson.dvd.json
 sr latest
 sr push --latest --title "The session I just finished"
 showrun serve --port 8000
 ```
 
 `showrun import` works locally and never publishes automatically. `showrun
-push` uploads through the same sanitizer as the browser and creates a private
-draft; it never publishes automatically. API tokens are stored with mode
-`0600` in the platform config directory. `SHOWRUN_URL` and `SHOWRUN_TOKEN`
-override saved credentials for CI.
+validate` applies the same size, structure, timing, ordering, and redaction
+rules used by the hosted product. `showrun push` accepts either a session or a
+portable `.dvd.json`, creates a private draft, and never publishes
+automatically. API tokens are stored with mode `0600` in the platform config
+directory. `SHOWRUN_URL` and `SHOWRUN_TOKEN` override saved credentials for CI.
 
 ### MCP
 
-`showrun mcp` exposes three stdio tools:
+`showrun mcp` exposes four stdio tools:
 
 - `showrun_import_session` imports a path or the latest Codex session.
+- `showrun_validate_artifact` validates and summarizes a local `.dvd.json`.
 - `showrun_list_drafts` lists the authenticated workspace.
 - `showrun_open_editor` returns the hosted editor URL for a lesson.
 
@@ -113,11 +117,15 @@ web-component snippets. The framework-free component can be themed:
   src="https://showrun-production.up.railway.app/embed/your-release"
   title="A useful agent workflow"
   theme="dark"
+  chapter="2"
 ></showrun-player>
 ```
 
-Supported themes are `auto`, `light`, and `dark`. Releases are immutable;
-unpublishing removes public playback without deleting release history.
+Supported themes are `auto`, `light`, and `dark`. Use `chapter="2"` or
+`start="49.5"` for documentation deep links. Attribute changes are observed,
+so React, Vue, and other hydrated documentation systems can update a player
+without recreating it. Releases are immutable; unpublishing removes public
+playback without deleting release history.
 
 ## Verify
 

@@ -227,11 +227,17 @@ async def test_embed_supports_valid_themes_and_rejects_unknown_theme(tmp_path: P
         match = re.search(r'href="/watch/([^"]+)"', library.text)
         assert match
         slug = match.group(1)
-        dark = await client.get(f"/embed/{slug}?theme=dark")
-        unknown = await client.get(f"/embed/{slug}?theme=sepia")
+        dark = await client.get(f"/embed/{slug}?theme=dark&chapter=2")
+        unknown = await client.get(f"/embed/{slug}?theme=sepia&start=49.5")
+        hydrator = await client.get("/static/embed.js")
 
     assert "embed-mode theme-dark" in dark.text
+    assert '"initialTime": 24.0' in dark.text
     assert "embed-mode theme-auto" in unknown.text
+    assert '"initialTime": 49.5' in unknown.text
+    assert 'return ["src", "title", "theme", "chapter", "start"]' in hydrator.text
+    assert "strict-origin-when-cross-origin" in hydrator.text
+    assert 'class="skip-link"' in dark.text
 
 
 async def test_draft_persists_across_restart(tmp_path: Path) -> None:

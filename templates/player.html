@@ -26,9 +26,9 @@
   x-data="showrunPlayer('showrun-player-config')"
   x-init="init()"
   x-cloak
-  @keydown.window.space.prevent="toggle()"
-  @keydown.window.arrow-right.prevent="seek(5)"
-  @keydown.window.arrow-left.prevent="seek(-5)"
+  @keydown.window.space="handleShortcut($event, 'toggle')"
+  @keydown.window.arrow-right="handleShortcut($event, 'forward')"
+  @keydown.window.arrow-left="handleShortcut($event, 'back')"
 >
   {% if not embed %}
   <header class="topbar">
@@ -44,11 +44,13 @@
         {{ source_format }}
       </span>
       <button
+        type="button"
         class="quiet-button"
         @click="navigator.clipboard.writeText(window.location.href); notify('Share link copied')"
       >Share</button>
       {% if embed_code %}
       <button
+        type="button"
         class="quiet-button"
         data-embed-code="{{ embed_code }}"
         @click="navigator.clipboard.writeText($el.dataset.embedCode); notify('Embed code copied')"
@@ -78,8 +80,10 @@
       <div class="rail-label">Chapters</div>
       {% for chapter in chapters %}
       <button
+        type="button"
         class="chapter-button"
         :class="{ 'active': activeChapter.at === {{ chapter.at }} }"
+        :aria-current="activeChapter.at === {{ chapter.at }} ? 'step' : null"
         @click="jump({{ chapter.at }})"
       >
         <span>0{{ loop.index }}</span>
@@ -98,8 +102,8 @@
     <div class="player">
       <div class="player-toolbar">
         <div class="view-switcher" aria-label="Player view">
-          <button :class="{ 'selected': mode === 'lesson' }" @click="mode = 'lesson'">Lesson</button>
-          <button :class="{ 'selected': mode === 'trace' }" @click="mode = 'trace'">Source trace</button>
+          <button type="button" :class="{ 'selected': mode === 'lesson' }" :aria-pressed="mode === 'lesson'" @click="mode = 'lesson'">Lesson</button>
+          <button type="button" :class="{ 'selected': mode === 'trace' }" :aria-pressed="mode === 'trace'" @click="mode = 'trace'">Source trace</button>
         </div>
         <div class="toolbar-context">
           <span x-text="activeChapter.name"></span>
@@ -107,6 +111,7 @@
           <span>Event <span x-text="activeEvent.id"></span> of {{ events | length }}</span>
         </div>
         <button
+          type="button"
           class="caption-toggle"
           :class="{ 'on': captions }"
           @click="captions = !captions"
@@ -142,6 +147,7 @@
           <div class="timeline-progress" :style="`width: ${(time / duration) * 100}%`"></div>
           {% for event in events %}
           <button
+            type="button"
             aria-label="Jump to event {{ event.id }}"
             class="timeline-marker marker-{{ event.kind }}"
             style="left: {{ (event.at / duration * 100) | round(3) }}%"
@@ -155,19 +161,19 @@
             max="{{ duration }}"
             step="0.1"
             x-model.number="time"
-            @input="playing = false"
+            @input="playing = false; stopTimer(); trackChapter()"
           >
         </div>
         <div class="transport">
-          <button class="restart" @click="jump(0)" aria-label="Restart">↺</button>
-          <button class="play-button" @click="toggle()" :aria-label="playing ? 'Pause' : 'Play'">
+          <button type="button" class="restart" @click="jump(0)" aria-label="Restart">↺</button>
+          <button type="button" class="play-button" @click="toggle()" :aria-label="playing ? 'Pause' : 'Play'">
             <span x-text="playing ? 'Ⅱ' : '▶'"></span>
           </button>
           <span class="timecode">
             <span x-text="formatTime(time)"></span> <i>/</i> <span x-text="formatTime(duration)"></span>
           </span>
-          <button class="speed" @click="cycleSpeed()" x-text="`${speed}×`"></button>
-          <button class="transcript-button" @click="transcript = !transcript">
+          <button type="button" class="speed" aria-label="Change playback speed" @click="cycleSpeed()" x-text="`${speed}×`"></button>
+          <button type="button" class="transcript-button" :aria-expanded="transcript" @click="transcript = !transcript">
             <span x-text="transcript ? 'Hide transcript' : 'View transcript'"></span>
           </button>
         </div>
@@ -238,10 +244,10 @@
       <p>Use a plain iframe anywhere, MDX in React documentation, or the responsive web component.</p>
     </div>
     <div class="embed-options">
-      <button class="quiet-button" data-copy-code="{{ embed_code }}" @click="navigator.clipboard.writeText($el.dataset.copyCode); notify('HTML embed copied')">HTML iframe</button>
-      <button class="quiet-button" data-copy-code="{{ mdx_code }}" @click="navigator.clipboard.writeText($el.dataset.copyCode); notify('MDX embed copied')">MDX</button>
-      <button class="quiet-button" data-copy-code="{{ markdown_code }}" @click="navigator.clipboard.writeText($el.dataset.copyCode); notify('Markdown link copied')">Markdown</button>
-      <button class="quiet-button" data-copy-code="{{ component_code }}" @click="navigator.clipboard.writeText($el.dataset.copyCode); notify('Web component copied')">Web component</button>
+      <button type="button" class="quiet-button" data-copy-code="{{ embed_code }}" @click="navigator.clipboard.writeText($el.dataset.copyCode); notify('HTML embed copied')">HTML iframe</button>
+      <button type="button" class="quiet-button" data-copy-code="{{ mdx_code }}" @click="navigator.clipboard.writeText($el.dataset.copyCode); notify('MDX embed copied')">MDX</button>
+      <button type="button" class="quiet-button" data-copy-code="{{ markdown_code }}" @click="navigator.clipboard.writeText($el.dataset.copyCode); notify('Markdown link copied')">Markdown</button>
+      <button type="button" class="quiet-button" data-copy-code="{{ component_code }}" @click="navigator.clipboard.writeText($el.dataset.copyCode); notify('Web component copied')">Web component</button>
     </div>
   </section>
   {% endif %}
@@ -254,7 +260,7 @@
     </div>
     <div class="transcript-grid">
       {% for event in events %}
-      <button @click="jump({{ event.at }})">
+      <button type="button" @click="jump({{ event.at }})">
         <time>{{ event.at | int }}s</time>
         <strong>{{ event.label }}</strong>
         <span>{{ event.text }}</span>

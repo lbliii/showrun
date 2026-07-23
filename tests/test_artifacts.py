@@ -156,7 +156,10 @@ def test_director_reorders_and_rewrites_events_and_chapters() -> None:
         event_orders={1: "2", 2: "1"},
         event_pauses={1: "1.5", 2: "2"},
         event_labels={1: "Learner question", 2: "Core answer"},
-        event_texts={1: "Where do we begin?", 2: "Begin with the recording."},
+        event_texts={
+            1: "password=supersecret123",
+            2: "Begin with the recording.",
+        },
         chapter_values=(
             {
                 "include": "",
@@ -183,6 +186,8 @@ def test_director_reorders_and_rewrites_events_and_chapters() -> None:
 
     assert [event.label for event in directed.events] == ["Core answer", "Learner question"]
     assert directed.events[0].text == "Begin with the recording."
+    assert directed.events[1].text == "[REDACTED]"
+    assert "Potential credentials were redacted locally." in directed.warnings
     assert directed.events[0].pause_after == 2
     assert directed.events[1].at == 6
     assert [chapter.name for chapter in directed.chapters] == ["New opening", "Conclusion"]

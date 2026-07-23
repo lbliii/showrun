@@ -158,7 +158,7 @@ def create_artifact_from_text(
 ) -> ShowrunArtifact:
     """Import a session and automatically direct a watchable draft."""
 
-    from showrun.importers import parse_session_text
+    from showrun.importers import parse_session_text, redact_text
 
     imported_title, session_id, source_format, source_events, warnings = parse_session_text(
         text,
@@ -167,8 +167,12 @@ def create_artifact_from_text(
     events = apply_smart_pacing(source_events)
     chapters = suggest_chapters(events)
     duration = round(events[-1].at + events[-1].duration + 1.5, 1)
+    base_title = title.strip()[:120] or imported_title
+    clean_title = redact_text(base_title)
+    if clean_title != base_title and "Potential credentials were redacted locally." not in warnings:
+        warnings += ("Potential credentials were redacted locally.",)
     return ShowrunArtifact(
-        title=title.strip()[:120] or imported_title,
+        title=clean_title,
         session_id=session_id,
         source_format=source_format,
         events=events,
@@ -194,10 +198,18 @@ def direct_artifact(
 ) -> ShowrunArtifact:
     """Apply the small director surface while preserving sanitized source metadata."""
 
-    clean_title = " ".join(title.split())[:120]
+    from showrun.importers import redact_text
+
+    base_title = " ".join(title.split())[:120]
+    base_description = description.strip()[:500]
+    clean_title = redact_text(base_title)
     if not clean_title:
         raise ValueError("Give the lesson a title.")
-    clean_description = description.strip()[:500]
+    clean_description = redact_text(base_description)
+    credentials_redacted = (clean_title, clean_description) != (
+        base_title,
+        base_description,
+    )
 
     event_orders = event_orders or {}
     event_pauses = event_pauses or {}
@@ -231,8 +243,14 @@ def direct_artifact(
             raise ValueError(f"Event {source_event.id} needs a valid pause.") from exc
         if not 0 <= pause_after <= 30:
             raise ValueError(f"Event {source_event.id} pause must be between 0 and 30 seconds.")
-        label = " ".join(event_labels.get(source_event.id, source_event.label).split())[:80]
-        text = event_texts.get(source_event.id, source_event.text).strip()[:10000]
+        base_label = " ".join(event_labels.get(source_event.id, source_event.label).split())[:80]
+        base_text = event_texts.get(source_event.id, source_event.text).strip()[:10000]
+        label = redact_text(base_label)
+        text = redact_text(base_text)
+        credentials_redacted = credentials_redacted or (label, text) != (
+            base_label,
+            base_text,
+        )
         if not label:
             raise ValueError(f"Event {source_event.id} needs a label.")
         if not text:
@@ -257,7 +275,8 @@ def direct_artifact(
     for index, values in enumerate(chapter_values, 1):
         if not values.get("include"):
             continue
-        name = " ".join(values.get("name", "").split())[:80]
+        base_name = " ".join(values.get("name", "").split())[:80]
+        name = redact_text(base_name)
         if not name:
             raise ValueError(f"Chapter {index} needs a name.")
         try:
@@ -271,6 +290,16 @@ def direct_artifact(
             order = float(raw_order) if raw_order.strip() else float(index)
         except ValueError as exc:
             raise ValueError(f"Chapter {index} needs a valid order.") from exc
+        base_caption = values.get("caption", "").strip()[:160]
+        base_note = values.get("note", "").strip()[:1000]
+        base_teaching_point = values.get("teaching_point", "").strip()[:500]
+        caption = redact_text(base_caption)
+        note = redact_text(base_note)
+        teaching_point = redact_text(base_teaching_point)
+        credentials_redacted = credentials_redacted or (
+            (name, caption, note, teaching_point)
+            != (base_name, base_caption, base_note, base_teaching_point)
+        )
         ordered_chapters.append(
             (
                 order,
@@ -278,9 +307,9 @@ def direct_artifact(
                 Chapter(
                     name=name,
                     at=at,
-                    caption=values.get("caption", "").strip()[:160],
-                    note=values.get("note", "").strip()[:1000],
-                    teaching_point=values.get("teaching_point", "").strip()[:500],
+                    caption=caption,
+                    note=note,
+                    teaching_point=teaching_point,
                 ),
             )
         )
@@ -292,6 +321,10 @@ def direct_artifact(
         raise ValueError("Chapter start times must follow chapter order.")
     if chapters[0].at != 0:
         chapters[0] = replace(chapters[0], at=0)
+    warnings = artifact.warnings
+    redaction_warning = "Potential credentials were redacted locally."
+    if credentials_redacted and redaction_warning not in warnings:
+        warnings += (redaction_warning,)
 
     return replace(
         artifact,
@@ -300,6 +333,7 @@ def direct_artifact(
         events=tuple(events),
         chapters=tuple(chapters),
         duration=duration,
+        warnings=warnings,
     )
 
 

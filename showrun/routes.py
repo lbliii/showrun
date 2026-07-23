@@ -7,6 +7,7 @@ import html
 import json
 import os
 from dataclasses import asdict, replace
+from math import isfinite
 from typing import Any
 
 from chirp.app import App
@@ -86,6 +87,26 @@ def _import_artifact(raw: str, *, filename: str, title: str = "") -> ShowrunArti
     return artifact
 
 
+def _initial_time(request: Request, artifact: ShowrunArtifact) -> float:
+    raw_chapter = str(request.query.get("chapter") or "")
+    if raw_chapter:
+        try:
+            chapter = int(raw_chapter)
+        except ValueError:
+            chapter = 0
+        if 1 <= chapter <= len(artifact.chapters):
+            return artifact.chapters[chapter - 1].at
+    raw_start = str(request.query.get("start") or "")
+    if raw_start:
+        try:
+            start = float(raw_start)
+        except ValueError:
+            start = 0
+        if isfinite(start):
+            return round(max(0, min(artifact.duration, start)), 1)
+    return 0
+
+
 def _player_context(
     artifact: ShowrunArtifact,
     *,
@@ -101,8 +122,11 @@ def _player_context(
     component_code: str = "",
     theme: str = "auto",
     release_slug: str = "",
+    initial_time: float = 0,
 ) -> dict[str, Any]:
     player_config = artifact.player_config()
+    player_config["initialTime"] = initial_time
+    player_config["embedded"] = embed
     if release_slug:
         player_config["telemetry"] = {
             "endpoint": "/api/v1/events",
@@ -835,6 +859,7 @@ class ShowrunRoutes:
                 mdx_code=mdx_code,
                 component_code=component_code,
                 release_slug=release.slug,
+                initial_time=_initial_time(request, release.artifact),
             ),
         )
 
@@ -861,6 +886,7 @@ class ShowrunRoutes:
                 canonical_url=f"{base_url}/watch/{release.slug}",
                 theme=theme,
                 release_slug=release.slug,
+                initial_time=_initial_time(request, release.artifact),
             ),
         )
 

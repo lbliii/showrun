@@ -371,6 +371,8 @@ class ShowrunStore:
                 properties = json.loads(row.properties_json)
             except json.JSONDecodeError, TypeError:
                 properties = {}
+            if not isinstance(properties, dict):
+                properties = {}
             if row.event_name == "chapter.viewed":
                 with suppress(TypeError, ValueError):
                     chapter_counts[int(properties.get("chapter") or 0)] += 1

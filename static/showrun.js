@@ -15,6 +15,10 @@ document.addEventListener("alpine:init", () => {
     init() {
       const node = document.getElementById(configId);
       this.config = JSON.parse(node.textContent);
+      this.time = Math.max(
+        0,
+        Math.min(this.config.duration || 0, Number(this.config.initialTime) || 0),
+      );
       this.trackChapter();
     },
 
@@ -102,6 +106,20 @@ document.addEventListener("alpine:init", () => {
 
     cycleSpeed() {
       this.speed = this.speed === 1 ? 1.5 : this.speed === 1.5 ? 2 : 1;
+    },
+
+    handleShortcut(event, action) {
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest("button, a, input, select, textarea, summary, [contenteditable]")
+      ) {
+        return;
+      }
+      event.preventDefault();
+      if (action === "toggle") this.toggle();
+      if (action === "forward") this.seek(5);
+      if (action === "back") this.seek(-5);
     },
 
     formatTime(value) {
