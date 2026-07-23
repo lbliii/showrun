@@ -109,6 +109,8 @@ async def test_public_library_and_readiness(tmp_path: Path) -> None:
     assert "'nonce-" in csp_headers[0]
     assert "'unsafe-eval'" in csp_headers[0]
     assert "style-src 'self' 'unsafe-inline'" in csp_headers[0]
+    assert "frame-ancestors 'none'" in csp_headers[0]
+    assert library.header("x-frame-options") == "DENY"
 
 
 async def test_director_can_import_preview_publish_and_embed(
@@ -203,6 +205,16 @@ async def test_director_can_import_preview_publish_and_embed(
     assert f"https://showrun.example/embed/{slug}" in watch.text
     assert "navigator.clipboard.writeText(&#34;" not in watch.text
     assert "embed-mode" in embed.text
+    embed_csp_headers = [
+        value for name, value in embed.headers if name.lower() == "content-security-policy"
+    ]
+    assert len(embed_csp_headers) == 1
+    assert "frame-ancestors *" in embed_csp_headers[0]
+    assert "frame-ancestors 'none'" not in embed_csp_headers[0]
+    assert "'nonce-" in embed_csp_headers[0]
+    assert embed.header("x-frame-options") is None
+    assert watch.header("x-frame-options") == "DENY"
+    assert "frame-ancestors 'none'" in watch.header("content-security-policy", "")
     assert 'data-chirp="alpine"' in watch.text
     assert "chirpui" not in watch.text.lower()
     assert manifest.header("cache-control") == "public, max-age=31536000, immutable"

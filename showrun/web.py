@@ -16,6 +16,7 @@ from chirp.middleware.stack import secure_stack
 
 from showrun.artifacts import load_artifact
 from showrun.auth import verify_api_token
+from showrun.embed_policy import PublicEmbedPolicy
 from showrun.routes import ShowrunRoutes
 from showrun.store import ShowrunStore
 
@@ -74,6 +75,9 @@ def create_app(
         login_url="/login",
     )
     csrf = CSRFConfig(exempt_paths=frozenset({"/api/v1/imports", "/api/v1/events"}))
+    # Run outermost so the public embed exception is applied after Chirp's
+    # nonce CSP and secure-by-default X-Frame-Options middleware.
+    application.add_middleware(PublicEmbedPolicy())
     for middleware in secure_stack(application.config, auth=auth, csrf=csrf, headers=headers):
         application.add_middleware(middleware)
 
