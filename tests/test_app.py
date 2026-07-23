@@ -164,6 +164,9 @@ async def test_director_can_import_preview_publish_and_embed(
     assert watch.status == embed.status == manifest.status == oembed.status == 200
     assert "showrunPlayer" in watch.text
     assert "Copy embed" in watch.text
+    assert "HTML iframe" in watch.text
+    assert "Web component" in watch.text
+    assert "/static/embed.js" in watch.text
     assert "navigator.clipboard.writeText($el.dataset.embedCode)" in watch.text
     assert 'data-embed-code="&lt;iframe' in watch.text
     assert f"/embed/{slug}" in watch.text
@@ -179,6 +182,20 @@ async def test_director_can_import_preview_publish_and_embed(
     assert "<strong>1</strong><span>publishes</span>" in dashboard.text
     assert "<strong>1</strong><span>watch views</span>" in dashboard.text
     assert "<strong>1</strong><span>embed loads</span>" in dashboard.text
+
+
+async def test_embed_supports_valid_themes_and_rejects_unknown_theme(tmp_path: Path) -> None:
+    app = _application(tmp_path / "themes.db")
+    async with TestClient(app) as client:
+        library = await client.get("/")
+        match = re.search(r'href="/watch/([^"]+)"', library.text)
+        assert match
+        slug = match.group(1)
+        dark = await client.get(f"/embed/{slug}?theme=dark")
+        unknown = await client.get(f"/embed/{slug}?theme=sepia")
+
+    assert "embed-mode theme-dark" in dark.text
+    assert "embed-mode theme-auto" in unknown.text
 
 
 async def test_draft_persists_across_restart(tmp_path: Path) -> None:

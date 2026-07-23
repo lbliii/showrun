@@ -22,7 +22,7 @@
 <script id="showrun-player-config" type="application/json">{{ player_config | tojson }}</script>
 
 <div
-  class="app-shell{% if embed %} embed-mode{% endif %}"
+  class="app-shell{% if embed %} embed-mode theme-{{ theme }}{% endif %}"
   x-data="showrunPlayer('showrun-player-config')"
   x-init="init()"
   x-cloak
@@ -229,6 +229,22 @@
       {% endif %}
     </aside>
   </section>
+
+  {% if embed_code and not embed %}
+  <section class="embed-kit">
+    <div>
+      <p class="eyebrow">Documentation kit</p>
+      <h2>Put this lesson where people learn.</h2>
+      <p>Use a plain iframe anywhere, MDX in React documentation, or the responsive web component.</p>
+    </div>
+    <div class="embed-options">
+      <button class="quiet-button" data-copy-code="{{ embed_code }}" @click="navigator.clipboard.writeText($el.dataset.copyCode); notify('HTML embed copied')">HTML iframe</button>
+      <button class="quiet-button" data-copy-code="{{ mdx_code }}" @click="navigator.clipboard.writeText($el.dataset.copyCode); notify('MDX embed copied')">MDX</button>
+      <button class="quiet-button" data-copy-code="{{ markdown_code }}" @click="navigator.clipboard.writeText($el.dataset.copyCode); notify('Markdown link copied')">Markdown</button>
+      <button class="quiet-button" data-copy-code="{{ component_code }}" @click="navigator.clipboard.writeText($el.dataset.copyCode); notify('Web component copied')">Web component</button>
+    </div>
+  </section>
+  {% endif %}
 
   {% if not embed %}
   <section class="transcript-drawer" x-show="transcript" x-transition>

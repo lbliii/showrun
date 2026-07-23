@@ -55,6 +55,10 @@ def _base_url(request: Request) -> str:
     return f"{scheme}://{host}"
 
 
+def _markdown_label(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]")
+
+
 def _player_context(
     artifact: ShowrunArtifact,
     *,
@@ -65,6 +69,10 @@ def _player_context(
     canonical_url: str = "",
     manifest_url: str = "",
     embed_code: str = "",
+    markdown_code: str = "",
+    mdx_code: str = "",
+    component_code: str = "",
+    theme: str = "auto",
 ) -> dict[str, Any]:
     return {
         "canonical_url": canonical_url,
@@ -77,10 +85,14 @@ def _player_context(
         "lesson_id": lesson_id,
         "manage": manage,
         "manifest_url": manifest_url,
+        "markdown_code": markdown_code,
+        "mdx_code": mdx_code,
+        "component_code": component_code,
         "player_config": artifact.player_config(),
         "source_format": artifact.source_format,
         "state": state,
         "title": artifact.title,
+        "theme": theme,
     }
 
 
@@ -601,11 +613,23 @@ class ShowrunRoutes:
         base_url = _base_url(request)
         canonical = f"{base_url}/watch/{release.slug}"
         embed_url = f"{base_url}/embed/{release.slug}"
+        safe_title = html.escape(release.artifact.title, quote=True)
         embed_code = (
             f'<iframe src="{embed_url}" '
-            f'title="{html.escape(release.artifact.title, quote=True)}" '
+            f'title="{safe_title}" '
             'loading="lazy" style="width:100%;aspect-ratio:16/9;border:0" '
             "allowfullscreen></iframe>"
+        )
+        mdx_code = (
+            f'<iframe src="{embed_url}" title="{safe_title}" loading="lazy" '
+            'style={{width:"100%",aspectRatio:"16/9",border:0}} allowFullScreen />'
+        )
+        component_code = (
+            f'<script defer src="{base_url}/static/embed.js"></script>\n'
+            f'<showrun-player src="{embed_url}" title="{safe_title}"></showrun-player>'
+        )
+        markdown_code = (
+            f"[Watch {_markdown_label(release.artifact.title)} on Showrun]({canonical})"
         )
         await self.store.record_usage(
             "release.viewed",
@@ -621,6 +645,9 @@ class ShowrunRoutes:
                 canonical_url=canonical,
                 manifest_url=f"/releases/{release.slug}/dvd.json",
                 embed_code=embed_code,
+                markdown_code=markdown_code,
+                mdx_code=mdx_code,
+                component_code=component_code,
             ),
         )
 
@@ -629,6 +656,9 @@ class ShowrunRoutes:
         if isinstance(release, Response):
             return release
         base_url = _base_url(request)
+        theme = str(request.query.get("theme") or "auto").lower()
+        if theme not in {"auto", "light", "dark"}:
+            theme = "auto"
         await self.store.record_usage(
             "release.embedded",
             lesson_id=release.lesson_id,
@@ -642,6 +672,7 @@ class ShowrunRoutes:
                 state=f"release r{release.revision}",
                 embed=True,
                 canonical_url=f"{base_url}/watch/{release.slug}",
+                theme=theme,
             ),
         )
 
