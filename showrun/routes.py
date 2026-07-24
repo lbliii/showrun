@@ -32,6 +32,11 @@ from showrun.auth import (
     validate_name,
     verify_password,
 )
+from showrun.community import (
+    CommunityStore,
+    TechniqueCardError,
+    validate_card,
+)
 from showrun.store import LessonRecord, ReleaseRecord, ShowrunStore, UserRecord
 
 
@@ -157,9 +162,15 @@ def _player_context(
 class ShowrunRoutes:
     """Bind focused request handlers to a configured Chirp application."""
 
-    def __init__(self, application: App, store: ShowrunStore) -> None:
+    def __init__(
+        self,
+        application: App,
+        store: ShowrunStore,
+        community: CommunityStore,
+    ) -> None:
         self.app = application
         self.store = store
+        self.community = community
         self.login_throttle = LoginThrottle()
 
     def register(self) -> None:
@@ -224,6 +235,19 @@ class ShowrunRoutes:
             methods=["POST"],
             name="releases.unpublish",
         )(self.unpublish_release)
+        self.app.route("/discover", name="community.discover")(self.discover)
+        self.app.route("/topics/{key}", name="community.topic")(self.topic_page)
+        self.app.route("/creators/{handle}", name="community.profile")(self.profile_page)
+        self.app.route("/techniques/{slug}", name="community.technique")(self.technique_page)
+        self.app.route(
+            "/lessons/{lesson_id}/technique",
+            name="community.technique.form",
+        )(self.technique_form_page)
+        self.app.route(
+            "/techniques",
+            methods=["POST"],
+            name="community.technique.publish",
+        )(self.publish_technique)
         self.app.route("/watch/{slug}", name="releases.watch")(self.watch)
         self.app.route("/embed/{slug}", name="releases.embed")(self.embed)
         self.app.route("/releases/{slug}/dvd.json", name="releases.manifest")(self.release_manifest)
@@ -806,6 +830,203 @@ class ShowrunRoutes:
                 properties={"visibility": release.visibility, "revision": release.revision},
             )
         return MutationResult(f"/watch/{release.slug}")
+
+    # -- Community Hub ------------------------------------------------------
+
+    async def discover(self, request: Request) -> Page:
+        user = self.browser_user()
+        query = str(request.query.get("q") or "")[:100]
+        topic = str(request.query.get("topic") or "")[:64]
+        techniques = await self.community.list_public_techniques(query=query, topic=topic)
+        topics = await self.community.list_public_topics()
+        total = await self.community.public_technique_count()
+        return Page(
+            "discover.html",
+            "page_root",
+            user=user,
+            techniques=techniques,
+            topics=topics,
+            total=total,
+            query=query,
+            active_topic=topic,
+        )
+
+    async def topic_page(self, key: str, request: Request) -> Page:
+        user = self.browser_user()
+        techniques = await self.community.list_public_techniques(topic=key)
+        count = await self.community.public_technique_count(topic=key)
+        return Page(
+            "topic.html",
+            "page_root",
+            user=user,
+            topic_key=key,
+            techniques=techniques,
+            count=count,
+        )
+
+    async def profile_page(self, handle: str, request: Request) -> Page | Response:
+        user = self.browser_user()
+        viewer_workspace = user.workspace_id if user else None
+        profile = await self.community.get_public_profile(
+            handle,
+            viewer_workspace_id=viewer_workspace,
+        )
+        if profile is None:
+            return Response("Creator not found", status=404, content_type="text/plain")
+        techniques = await self.community.list_techniques_by_handle(
+            handle,
+            viewer_workspace_id=viewer_workspace,
+        )
+        return Page(
+            "profile.html",
+            "page_root",
+            user=user,
+            profile=profile,
+            techniques=techniques,
+            is_owner=bool(user and user.workspace_id == profile.workspace_id),
+        )
+
+    async def technique_page(self, slug: str, request: Request) -> Page | Response:
+        user = self.browser_user()
+        viewer_workspace = user.workspace_id if user else None
+        card = await self.community.get_technique_card(
+            slug,
+            viewer_workspace_id=viewer_workspace,
+        )
+        if card is None:
+            return Response("Technique not found", status=404, content_type="text/plain")
+        topics = await self.community.list_topics_for_technique(card.id)
+        versions = await self.community.list_versions(
+            slug,
+            viewer_workspace_id=viewer_workspace,
+        )
+        is_owner = bool(user and user.workspace_id == card.workspace_id)
+        if not is_owner:
+            await self.store.record_usage(
+                "technique.viewed",
+                lesson_id=None,
+                release_id=card.release_id,
+                properties={"technique": card.slug},
+            )
+        return Page(
+            "technique.html",
+            "page_root",
+            user=user,
+            card=card,
+            topics=topics,
+            versions=versions,
+            is_owner=is_owner,
+        )
+
+    async def technique_form_page(
+        self,
+        lesson_id: str,
+        request: Request,
+    ) -> Page | Response:
+        user, denied = self.require_user()
+        if denied or user is None:
+            return denied or _redirect("/login")
+        lesson = await self.store.get_lesson(lesson_id, workspace_id=user.workspace_id)
+        if lesson is None:
+            return Response("Lesson not found", status=404, content_type="text/plain")
+        releases = await self.store.list_releases(lesson.id, workspace_id=user.workspace_id)
+        public_release = next(
+            (r for r in releases if r.visibility == "public" and r.disabled_at is None),
+            None,
+        )
+        existing = await self.community.owned_card_by_lesson(
+            lesson.id,
+            workspace_id=user.workspace_id,
+        )
+        topics_value = ""
+        if existing is not None:
+            topics_value = await self.community.topics_csv(existing.id)
+        return self._technique_form(
+            lesson=lesson,
+            public_release=public_release,
+            card=existing,
+            topics_value=topics_value,
+            error="",
+        )
+
+    def _technique_form(
+        self,
+        *,
+        lesson: LessonRecord,
+        public_release: ReleaseRecord | None,
+        card: Any,
+        topics_value: str,
+        error: str,
+    ) -> Page:
+        return Page(
+            "technique_form.html",
+            "page_root",
+            lesson=lesson,
+            public_release=public_release,
+            release_slug=public_release.slug if public_release else "",
+            card=card,
+            topics_value=topics_value,
+            error=error,
+        )
+
+    async def publish_technique(self, request: Request) -> Page | Response:
+        user, denied = self.require_user()
+        if denied or user is None:
+            return denied or _redirect("/login")
+        form = await request.form()
+        release_slug = str(form.get("release_slug") or "").strip()
+        release = await self.store.get_release(release_slug)
+        lesson = (
+            await self.store.get_lesson(release.lesson_id, workspace_id=user.workspace_id)
+            if release is not None
+            else None
+        )
+        if release is None or lesson is None:
+            return Response("Release not found", status=404, content_type="text/plain")
+
+        def _reject(message: str) -> Page:
+            return self._technique_form(
+                lesson=lesson,
+                public_release=release,
+                card=None,
+                topics_value=str(form.get("topics") or ""),
+                error=message,
+            )
+
+        try:
+            card = validate_card(
+                problem=str(form.get("problem") or ""),
+                pattern=str(form.get("pattern") or ""),
+                use_when=str(form.get("use_when") or ""),
+                objective=str(form.get("objective") or ""),
+                summary=str(form.get("summary") or ""),
+                limitations=str(form.get("limitations") or ""),
+                topics=str(form.get("topics") or ""),
+            )
+        except TechniqueCardError as exc:
+            return _reject(str(exc))
+        try:
+            technique, _version, created = await self.community.publish_technique_version(
+                user_id=user.id,
+                workspace_id=user.workspace_id,
+                display_name=user.name,
+                email=user.email,
+                release_slug=release_slug,
+                card=card,
+            )
+        except TechniqueCardError as exc:
+            return _reject(str(exc))
+        except LookupError:
+            return Response("Release not found", status=404, content_type="text/plain")
+        if created:
+            await self.store.record_usage(
+                "technique.published",
+                workspace_id=user.workspace_id,
+                lesson_id=lesson.id,
+                release_id=release.id,
+                properties={"technique": technique.slug},
+            )
+        return _redirect(f"/techniques/{technique.slug}")
 
     async def _release(self, slug: str) -> ReleaseRecord | Response:
         release = await self.store.get_release(slug)

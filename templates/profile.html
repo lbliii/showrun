@@ -1,0 +1,57 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ profile.display_name }} · Showrun{% end %}
+
+{% block head_extra %}
+<meta name="description" content="{{ profile.display_name }} publishes demonstrated agent techniques on Showrun.">
+<link rel="stylesheet" href="/static/library.css">
+<link rel="stylesheet" href="/static/community.css">
+{% end %}
+
+{% block content %}
+{% block page_root %}
+<div class="library-shell">
+  <header class="library-nav">
+    <a class="brand" href="/">
+      <span class="brand-mark">SR</span>
+      <span>Showrun</span>
+    </a>
+    <nav>
+      <a class="quiet-button" href="/discover">Discover</a>
+      {% if user %}<a class="quiet-button" href="/">Your library</a>{% endif %}
+    </nav>
+  </header>
+
+  <section class="library-hero">
+    <div>
+      <p class="eyebrow">Creator profile</p>
+      <h1>{{ profile.display_name }}</h1>
+      <p class="technique-meta">@{{ profile.handle }}{% if is_owner %} · <span class="status status-{{ profile.visibility == 'public' and 'published' or 'draft' }}">{{ profile.visibility }}</span>{% endif %}</p>
+      {% if profile.bio %}<p>{{ profile.bio }}</p>{% endif %}
+    </div>
+    <span class="showrun-badge">{{ techniques | length }} techniques</span>
+  </section>
+
+  <section class="library-section">
+    {% if techniques %}
+    <div class="technique-grid">
+      {% for card in techniques %}
+      <article class="technique-card">
+        <a class="technique-title" href="/techniques/{{ card.slug }}"><strong>{{ card.title }}</strong></a>
+        <p class="technique-summary">{{ card.summary }}</p>
+        <div class="technique-meta">
+          <span>v{{ card.version }}</span>
+          {% if is_owner and card.status != "published" %}<span class="status status-draft">{{ card.status }}</span>{% endif %}
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-library">
+      <strong>No published techniques yet.</strong>
+    </div>
+    {% endif %}
+  </section>
+</div>
+{% end %}
+{% end %}

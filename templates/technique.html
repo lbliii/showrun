@@ -1,0 +1,69 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ card.title }} · Showrun{% end %}
+
+{% block head_extra %}
+<meta name="description" content="{{ card.summary }}">
+<link rel="stylesheet" href="/static/library.css">
+<link rel="stylesheet" href="/static/community.css">
+{% end %}
+
+{% block content %}
+{% block page_root %}
+<div class="library-shell">
+  <header class="library-nav">
+    <a class="brand" href="/">
+      <span class="brand-mark">SR</span>
+      <span>Showrun</span>
+    </a>
+    <nav>
+      <a class="quiet-button" href="/discover">Discover</a>
+      {% if user %}<a class="quiet-button" href="/">Your library</a>{% endif %}
+    </nav>
+  </header>
+
+  <article class="technique-detail">
+    <p class="eyebrow">Demonstrated technique</p>
+    <h1>{{ card.title }}</h1>
+    <div class="technique-meta">
+      <a href="/creators/{{ card.handle }}">{{ card.display_name }} · @{{ card.handle }}</a>
+      <span>Version {{ card.version }}</span>
+      {% if card.status != "published" %}<span class="status status-draft">{{ card.status }}</span>{% endif %}
+    </div>
+
+    {% if topics %}
+    <div class="topic-chips">
+      {% for topic in topics %}
+      <a class="topic-chip" href="/topics/{{ topic.key }}">{{ topic.label }}</a>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <a class="library-button" href="/watch/{{ card.release_slug }}">Watch the run →</a>
+    {% if is_owner %}
+    <a class="quiet-button" href="/lessons/{{ card.lesson_id }}/technique">Edit technique</a>
+    {% endif %}
+
+    <dl class="technique-fields">
+      <dt>Problem</dt><dd>{{ card.problem }}</dd>
+      <dt>Pattern</dt><dd>{{ card.pattern }}</dd>
+      <dt>When to use it</dt><dd>{{ card.use_when }}</dd>
+      <dt>Learning objective</dt><dd>{{ card.objective }}</dd>
+      {% if card.limitations %}<dt>Limitations</dt><dd>{{ card.limitations }}</dd>{% endif %}
+      <dt>Summary</dt><dd>{{ card.summary }}</dd>
+    </dl>
+
+    {% if versions %}
+    <section class="technique-versions">
+      <h2>Version history</h2>
+      <ul>
+        {% for version in versions %}
+        <li><strong>v{{ version.version }}</strong> · {{ version.created_at }}</li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+  </article>
+</div>
+{% end %}
+{% end %}

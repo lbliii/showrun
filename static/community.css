@@ -1,0 +1,133 @@
+/* Community Hub surfaces: discovery feed, technique pages, profiles, topics. */
+
+.topic-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 1rem 0;
+}
+
+.topic-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--line, #d8d4c8);
+  background: var(--surface, #fff);
+  color: inherit;
+  font-size: 0.85rem;
+  text-decoration: none;
+}
+
+.topic-chip.is-active {
+  background: #171711;
+  color: #dff551;
+  border-color: #171711;
+}
+
+.technique-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
+.technique-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1.1rem;
+  border: 1px solid var(--line, #d8d4c8);
+  border-radius: 14px;
+  background: var(--surface, #fff);
+}
+
+.technique-title {
+  font-size: 1.05rem;
+  text-decoration: none;
+  color: inherit;
+}
+
+.technique-problem {
+  font-weight: 600;
+  margin: 0;
+}
+
+.technique-summary {
+  margin: 0;
+  color: var(--muted, #57534a);
+  font-size: 0.92rem;
+}
+
+.technique-meta {
+  display: flex;
+  gap: 0.75rem;
+  align-items: center;
+  font-size: 0.85rem;
+  color: var(--muted, #57534a);
+}
+
+.technique-meta a {
+  color: inherit;
+}
+
+.technique-detail {
+  max-width: 760px;
+  margin: 1.5rem auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.technique-fields {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.35rem;
+  margin: 1rem 0 0;
+}
+
+.technique-fields dt {
+  font-weight: 700;
+  margin-top: 0.75rem;
+}
+
+.technique-fields dd {
+  margin: 0;
+  color: var(--muted, #333);
+}
+
+.technique-versions ul {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0;
+}
+
+.stacked-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  max-width: 640px;
+}
+
+.stacked-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.stacked-form input,
+.stacked-form textarea {
+  width: 100%;
+  padding: 0.6rem 0.7rem;
+  border: 1px solid var(--line, #d8d4c8);
+  border-radius: 10px;
+  font: inherit;
+}
+
+.form-error {
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  background: #fbeaea;
+  color: #7a1f1f;
+  border: 1px solid #e7b7b7;
+}
