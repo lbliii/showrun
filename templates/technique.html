@@ -5,6 +5,15 @@
 
 {% block head_extra %}
 <meta name="description" content="{{ card.summary }}">
+<link rel="canonical" href="{{ canonical_url }}">
+<meta property="og:type" content="article">
+<meta property="og:title" content="{{ card.title }}">
+<meta property="og:description" content="{{ card.summary }}">
+<meta property="og:url" content="{{ canonical_url }}">
+<meta property="og:site_name" content="Showrun">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{{ card.title }}">
+<meta name="twitter:description" content="{{ card.summary }}">
 <link rel="stylesheet" href="/static/library.css">
 <link rel="stylesheet" href="/static/community.css">
 <link rel="stylesheet" href="/static/evidence.css">
@@ -18,15 +27,15 @@
       <span class="brand-mark">SR</span>
       <span>Showrun</span>
     </a>
-    <nav>
+    <nav aria-label="Primary">
       <a class="quiet-button" href="/discover">Discover</a>
       {% if user %}<a class="quiet-button" href="/">Your library</a>{% endif %}
     </nav>
   </header>
 
-  <article class="technique-detail">
+  <article class="technique-detail" aria-labelledby="technique-title">
     <p class="eyebrow">Demonstrated technique</p>
-    <h1>{{ card.title }}</h1>
+    <h1 id="technique-title">{{ card.title }}</h1>
     <div class="technique-meta">
       <a href="/creators/{{ card.handle }}">{{ card.display_name }} · @{{ card.handle }}</a>
       <span>Version {{ card.version }}</span>
@@ -43,10 +52,21 @@
 
     {% if can_embed %}
     <div class="technique-player">
-      <iframe src="/embed/{{ card.release_slug }}"
-        title="{{ card.title }}" loading="lazy"
+      <iframe src="{{ embed_src }}"
+        title="Showrun player for {{ card.title }}" loading="lazy"
         style="width:100%;aspect-ratio:16/9;border:0" allowfullscreen></iframe>
     </div>
+    {% if chapters %}
+    <nav class="chapter-nav" aria-label="Chapters">
+      {% for chapter in chapters %}
+      <a class="chapter-link{% if active_chapter == loop.index %} is-active{% endif %}"
+        href="/techniques/{{ card.slug }}?chapter={{ loop.index }}#technique-title"
+        {% if active_chapter == loop.index %}aria-current="true"{% endif %}>
+        <span class="chapter-index">{{ loop.index }}</span>{{ chapter.name }}
+      </a>
+      {% endfor %}
+    </nav>
+    {% endif %}
     {% endif %}
     <div class="technique-actions">
       <a class="library-button" href="/watch/{{ card.release_slug }}">Open full watch page →</a>

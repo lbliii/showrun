@@ -1004,6 +1004,25 @@ class ShowrunRoutes:
             if release is not None
             else []
         )
+        chapters = release.artifact.chapters if release is not None else ()
+        # Chapter/time deep-links: reflect ?chapter=/?start= into the embedded
+        # player so a technique is linkable at a precise moment.
+        active_chapter = 0
+        embed_query = ""
+        raw_chapter = str(request.query.get("chapter") or "")
+        raw_start = str(request.query.get("start") or "")
+        if raw_chapter.isdigit() and 1 <= int(raw_chapter) <= len(chapters):
+            active_chapter = int(raw_chapter)
+            embed_query = f"?chapter={active_chapter}"
+        elif raw_start:
+            try:
+                start = float(raw_start)
+            except ValueError:
+                start = -1
+            if isfinite(start) and start >= 0:
+                embed_query = f"?start={round(start, 1)}"
+        embed_src = f"/embed/{card.release_slug}{embed_query}"
+        canonical = f"{_base_url(request)}/techniques/{card.slug}"
         if not is_owner:
             await self.store.record_usage(
                 "technique.viewed",
@@ -1019,6 +1038,10 @@ class ShowrunRoutes:
             topics=topics,
             versions=versions,
             evidence_events=evidence_events,
+            chapters=chapters,
+            active_chapter=active_chapter,
+            embed_src=embed_src,
+            canonical_url=canonical,
             can_embed=release is not None,
             is_owner=is_owner,
         )
