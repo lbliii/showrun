@@ -31,20 +31,27 @@
   </section>
 
   <section class="library-section">
-    {% if techniques %}
+    {% if page.items %}
     <div class="technique-grid">
-      {% for card in techniques %}
+      {% for entry in page.items %}
       <article class="technique-card">
-        <a class="technique-title" href="/techniques/{{ card.slug }}"><strong>{{ card.title }}</strong></a>
-        <p class="technique-problem">{{ card.problem }}</p>
-        <p class="technique-summary">{{ card.summary }}</p>
+        <a class="technique-title" href="/techniques/{{ entry.card.slug }}"><strong>{{ entry.card.title }}</strong></a>
+        <p class="technique-problem">{{ entry.card.problem }}</p>
+        <p class="technique-summary">{{ entry.card.summary }}</p>
         <div class="technique-meta">
-          <a href="/creators/{{ card.handle }}">@{{ card.handle }}</a>
-          <span>v{{ card.version }}</span>
+          <a href="/creators/{{ entry.card.handle }}">@{{ entry.card.handle }}</a>
+          <span>v{{ entry.card.version }}</span>
         </div>
       </article>
       {% endfor %}
     </div>
+    {% if page.has_prev or page.has_next %}
+    <nav class="pagination" aria-label="Pagination">
+      {% if prev_url %}<a class="quiet-button" href="{{ prev_url }}" rel="prev">← Previous</a>{% endif %}
+      <span>Page {{ page.page }}</span>
+      {% if next_url %}<a class="quiet-button" href="{{ next_url }}" rel="next">Next →</a>{% endif %}
+    </nav>
+    {% endif %}
     {% else %}
     <div class="empty-library">
       <strong>No techniques in this topic yet.</strong>

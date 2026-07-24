@@ -253,3 +253,12 @@
   font-size: 0.75rem;
   color: var(--muted, #57534a);
 }
+
+.pagination {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  justify-content: center;
+  margin-top: 1.5rem;
+  font-size: 0.9rem;
+}
