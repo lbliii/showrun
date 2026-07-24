@@ -139,3 +139,9 @@
   color: #3f5216;
   border: 1px solid #7a9b36;
 }
+
+.signal-note {
+  margin: 0.75rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted, #57534a);
+}
