@@ -1,0 +1,85 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ question.title }} · Showrun{% end %}
+
+{% block head_extra %}
+<meta name="description" content="{{ question.title }}">
+<link rel="stylesheet" href="/static/library.css">
+<link rel="stylesheet" href="/static/community.css">
+<link rel="stylesheet" href="/static/forms.css">
+{% end %}
+
+{% block content %}
+{% block page_root %}
+<div class="library-shell">
+  <header class="library-nav">
+    <a class="brand" href="/">
+      <span class="brand-mark">SR</span>
+      <span>Showrun</span>
+    </a>
+    <nav aria-label="Primary">
+      <a class="quiet-button" href="/questions">Questions</a>
+      <a class="quiet-button" href="/discover">Discover</a>
+    </nav>
+  </header>
+
+  <article class="technique-detail" aria-labelledby="question-title">
+    <p class="eyebrow">Question</p>
+    <h1 id="question-title">{{ question.title }}</h1>
+    {% if question.body %}<p>{{ question.body }}</p>{% endif %}
+
+    <h2>Demonstrated answers</h2>
+    {% if answers %}
+    <ul class="answer-list">
+      {% for answer in answers %}
+      <li class="answer-row{% if answer.accepted %} is-accepted{% endif %}">
+        <div>
+          <a class="technique-title" href="/techniques/{{ answer.technique_slug }}">{{ answer.technique_title }}</a>
+          <div class="technique-meta">
+            <a href="/creators/{{ answer.answerer_handle }}">@{{ answer.answerer_handle }}</a>
+            {% if answer.accepted %}<span class="version-current">accepted</span>{% endif %}
+          </div>
+        </div>
+        {% if is_asker and not answer.accepted %}
+        <form action="/questions/{{ question.slug }}/accept/{{ answer.id }}" method="post">
+          {{ csrf_field() }}
+          <button class="quiet-button" type="submit">Accept</button>
+        </form>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty-library">
+      <strong>No answers yet.</strong>
+      <p>Answer with a published technique that demonstrates a solution.</p>
+    </div>
+    {% endif %}
+
+    {% if user %}
+    <section class="answer-form">
+      <h2>Answer with a technique</h2>
+      {% if my_techniques %}
+      <form class="stacked-form" action="/questions/{{ question.slug }}/answers" method="post">
+        {{ csrf_field() }}
+        <label>
+          <span>Your published technique</span>
+          <select name="technique_slug" required>
+            {% for card in my_techniques %}
+            <option value="{{ card.slug }}">{{ card.title }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button class="library-button" type="submit">Post answer</button>
+      </form>
+      {% else %}
+      <p>Publish a technique first, then answer with it. <a href="/discover">Browse techniques →</a></p>
+      {% endif %}
+    </section>
+    {% else %}
+    <p><a href="/login">Sign in</a> to answer with a technique.</p>
+    {% endif %}
+  </article>
+</div>
+{% end %}
+{% end %}

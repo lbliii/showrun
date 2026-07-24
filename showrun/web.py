@@ -19,6 +19,7 @@ from showrun.auth import verify_api_token
 from showrun.community import CommunityStore
 from showrun.embed_policy import PublicEmbedPolicy
 from showrun.golden import sync_golden
+from showrun.questions import QuestionsStore
 from showrun.routes import ShowrunRoutes
 from showrun.store import ShowrunStore
 
@@ -72,6 +73,7 @@ def create_app(
     headers = SecurityHeadersConfig(content_security_policy=None)
     store = ShowrunStore(application.db)
     community = CommunityStore(application.db)
+    questions = QuestionsStore(application.db)
     auth = AuthConfig(
         load_user=store.get_user,
         verify_token=lambda token: verify_api_token(store, token),
@@ -93,5 +95,5 @@ def create_app(
         await sync_golden(store, golden)
         await store.publish("lesson_golden", "public")
 
-    ShowrunRoutes(application, store, community).register()
+    ShowrunRoutes(application, store, community, questions).register()
     return application

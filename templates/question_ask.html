@@ -1,0 +1,58 @@
+{% extends "layout.html" %}
+
+{% block title %}Ask a question · Showrun{% end %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="/static/library.css">
+<link rel="stylesheet" href="/static/community.css">
+<link rel="stylesheet" href="/static/forms.css">
+{% end %}
+
+{% block content %}
+{% block page_root %}
+<div class="library-shell">
+  <header class="library-nav">
+    <a class="brand" href="/">
+      <span class="brand-mark">SR</span>
+      <span>Showrun</span>
+    </a>
+    <nav aria-label="Primary">
+      <a class="quiet-button" href="/questions">Questions</a>
+      <a class="quiet-button" href="/discover">Discover</a>
+    </nav>
+  </header>
+
+  <section class="technique-detail">
+    <p class="eyebrow">Demonstrated answers</p>
+    <h1>Ask a question</h1>
+    <p>Frame a concrete agent task or failure mode. Answers are published techniques.</p>
+
+    {% if error %}<div class="form-error">{{ error }}</div>{% endif %}
+
+    <form class="stacked-form" action="/questions" method="post">
+      {{ csrf_field() }}
+      <label>
+        <span>Question</span>
+        <input type="text" name="title" maxlength="160" required
+          value="{{ title }}"
+          placeholder="How do I make an agent retry a flaky tool safely?">
+      </label>
+      <label>
+        <span>Details <small>(optional)</small></span>
+        <textarea name="body" rows="4" maxlength="2000"
+          placeholder="Context, constraints, what you have tried.">{{ body }}</textarea>
+      </label>
+      <label>
+        <span>Topics <small>(comma separated, from the catalog)</small></span>
+        <input type="text" name="topics" value="{{ topics_value }}" list="topic-catalog"
+          placeholder="reliability, tools">
+        <datalist id="topic-catalog">
+          {% for topic in topic_catalog %}<option value="{{ topic.key }}">{{ topic.label }}</option>{% endfor %}
+        </datalist>
+      </label>
+      <button class="library-button" type="submit">Post question</button>
+    </form>
+  </section>
+</div>
+{% end %}
+{% end %}
