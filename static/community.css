@@ -145,3 +145,40 @@
   font-size: 0.85rem;
   color: var(--muted, #57534a);
 }
+
+.technique-player {
+  border-radius: 14px;
+  overflow: hidden;
+  border: 1px solid var(--line, #d8d4c8);
+  background: #000;
+}
+
+.technique-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.technique-evidence .evidence-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.75rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.evidence-heading {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  font-size: 0.9rem;
+}
+
+.evidence-heading .activity-label {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted, #57534a);
+}

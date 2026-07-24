@@ -996,6 +996,14 @@ class ShowrunRoutes:
             viewer_workspace_id=viewer_workspace,
         )
         is_owner = bool(user and user.workspace_id == card.workspace_id)
+        # Reuse the deployed player via its embed route (no duplication) and
+        # surface bounded, public-safe evidence from the same immutable release.
+        release = await self.store.get_release(card.release_slug)
+        evidence_events = (
+            [event for event in release.artifact.events if event.activity][:8]
+            if release is not None
+            else []
+        )
         if not is_owner:
             await self.store.record_usage(
                 "technique.viewed",
@@ -1010,6 +1018,8 @@ class ShowrunRoutes:
             card=card,
             topics=topics,
             versions=versions,
+            evidence_events=evidence_events,
+            can_embed=release is not None,
             is_owner=is_owner,
         )
 
