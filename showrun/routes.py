@@ -39,6 +39,7 @@ from showrun.community import (
     validate_bio,
     validate_card,
     validate_display_name,
+    validate_handle,
     validate_visibility,
 )
 from showrun.store import LessonRecord, ReleaseRecord, ShowrunStore, UserRecord
@@ -876,6 +877,7 @@ class ShowrunRoutes:
         raw_name = str(form.get("display_name") or "")
         raw_bio = str(form.get("bio") or "")
         raw_visibility = str(form.get("visibility") or "public")
+        raw_handle = str(form.get("handle") or "")
 
         def _reject(message: str) -> Page:
             return Page(
@@ -884,6 +886,7 @@ class ShowrunRoutes:
                 user=user,
                 profile=replace(
                     profile,
+                    handle=raw_handle.strip().lower() or profile.handle,
                     display_name=raw_name.strip() or profile.display_name,
                     bio=raw_bio.strip(),
                     visibility=raw_visibility
@@ -898,6 +901,12 @@ class ShowrunRoutes:
             display_name = validate_display_name(raw_name)
             bio = validate_bio(raw_bio)
             visibility = validate_visibility(raw_visibility)
+            handle = validate_handle(raw_handle)
+        except ProfileError as exc:
+            return _reject(str(exc))
+        try:
+            if handle != profile.handle:
+                await self.community.change_handle(user_id=user.id, new_handle=handle)
         except ProfileError as exc:
             return _reject(str(exc))
         await self.community.update_profile(
@@ -942,14 +951,23 @@ class ShowrunRoutes:
     async def profile_page(self, handle: str, request: Request) -> Page | Response:
         user = self.browser_user()
         viewer_workspace = user.workspace_id if user else None
+        current = await self.community.resolve_handle(handle)
+        if current is None:
+            return Response("Creator not found", status=404, content_type="text/plain")
         profile = await self.community.get_public_profile(
-            handle,
+            current,
             viewer_workspace_id=viewer_workspace,
         )
+        # Gate visibility before redirecting so a private profile 404s whether
+        # reached by its current handle or a past alias (no existence leak).
         if profile is None:
             return Response("Creator not found", status=404, content_type="text/plain")
+        if current != handle:
+            return Response(
+                "", status=301, headers=(("Location", f"/creators/{current}"),)
+            )
         techniques = await self.community.list_techniques_by_handle(
-            handle,
+            current,
             viewer_workspace_id=viewer_workspace,
         )
         return Page(
