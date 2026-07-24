@@ -168,7 +168,7 @@ async def test_unpublished_technique_absent_from_public_http_surfaces(tmp_path: 
         cookie = await _signup(client, email="owner@example.com", name="Owner Person")
         lesson_path, cookie = await _publish_public_release(client, cookie, title="Secret pattern")
         technique_path, cookie = await _publish_technique(
-            client, cookie, lesson_path, summary="Soon to be unpublished.", topics="secrets"
+            client, cookie, lesson_path, summary="Soon to be unpublished.", topics="security"
         )
         slug = technique_path.rsplit("/", 1)[-1]
 
@@ -188,7 +188,7 @@ async def test_unpublished_technique_absent_from_public_http_surfaces(tmp_path: 
         # Anonymous public surfaces no longer expose it.
         assert technique_path not in (await client.get("/discover")).text
         assert (await client.get(technique_path)).status == 404
-        assert technique_path not in (await client.get("/topics/secrets")).text
+        assert technique_path not in (await client.get("/topics/security")).text
 
         # The owner can still reach their own technique for editing.
         owner_view = await client.get(technique_path, headers={"Cookie": cookie})

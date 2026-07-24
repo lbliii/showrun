@@ -542,27 +542,36 @@ class CommunityStore:
 
     # -- Topics -------------------------------------------------------------
 
-    async def _ensure_topic(self, key: str) -> str:
-        topic_id = await self.db.fetch_val(
-            "SELECT id FROM topics WHERE key = ?",
-            key,
+    async def _resolve_topic_id(self, key: str) -> str:
+        """Resolve a governed topic key to its id, or reject an ungoverned key."""
+
+        topic_id = await self.db.fetch_val("SELECT id FROM topics WHERE key = ?", key)
+        if not topic_id:
+            raise TechniqueCardError(
+                f"'{key}' is not a known topic. Choose topics from the catalog."
+            )
+        return str(topic_id)
+
+    async def list_topics(self) -> list[TopicRecord]:
+        """All governed topics, for pickers and datalists."""
+
+        return await self.db.fetch(
+            TopicRecord,
+            "SELECT id, key, label, description, created_at FROM topics ORDER BY label",
         )
-        if topic_id:
-            return str(topic_id)
-        new_id = f"topic_{uuid4().hex}"
-        label = key.replace("-", " ").title()
-        inserted = await self.db.execute(
-            "INSERT INTO topics (id, key, label, description, created_at) "
-            "VALUES (?, ?, ?, '', ?) ON CONFLICT(key) DO NOTHING",
-            new_id,
-            key,
-            label,
-            _now(),
+
+    async def list_topic_catalog(self) -> list[tuple[TopicRecord, int]]:
+        """All governed topics with their public technique counts (0 included)."""
+
+        topics = await self.db.fetch(
+            TopicRecord,
+            "SELECT id, key, label, description, created_at FROM topics ORDER BY label",
         )
-        if inserted:
-            return new_id
-        winner = await self.db.fetch_val("SELECT id FROM topics WHERE key = ?", key)
-        return str(winner)
+        catalog: list[tuple[TopicRecord, int]] = []
+        for topic in topics:
+            count = await self.public_technique_count(topic=topic.key)
+            catalog.append((topic, count))
+        return catalog
 
     async def list_topics_for_technique(self, technique_id: str) -> list[TopicRecord]:
         return await self.db.fetch(
@@ -674,12 +683,14 @@ class CommunityStore:
                 content_hash,
                 now,
             )
+            # Resolve every topic against the governed catalog first so an
+            # ungoverned key rolls back the whole publish before any topic write.
+            topic_ids = [await self._resolve_topic_id(key) for key in card.topics]
             await self.db.execute(
                 "DELETE FROM technique_topics WHERE technique_id = ?",
                 technique.id,
             )
-            for key in card.topics:
-                topic_id = await self._ensure_topic(key)
+            for topic_id in topic_ids:
                 await self.db.execute(
                     "INSERT INTO technique_topics (technique_id, topic_id) "
                     "VALUES (?, ?) ON CONFLICT DO NOTHING",
