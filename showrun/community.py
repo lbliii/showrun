@@ -191,6 +191,32 @@ class TechniqueCardError(ValueError):
     """Raised when technique-card teaching metadata fails validation."""
 
 
+class ProfileError(ValueError):
+    """Raised when profile fields fail validation."""
+
+
+def validate_display_name(value: str) -> str:
+    name = " ".join(str(value or "").split())
+    if not name:
+        raise ProfileError("Enter a display name.")
+    if len(name) > 80:
+        raise ProfileError("Display name must be 80 characters or fewer.")
+    return name
+
+
+def validate_bio(value: str) -> str:
+    bio = " ".join(str(value or "").split())
+    if len(bio) > 500:
+        raise ProfileError("Keep your bio to 500 characters or fewer.")
+    return bio
+
+
+def validate_visibility(value: str) -> str:
+    if value not in {"public", "private"}:
+        raise ProfileError("Profile visibility must be public or private.")
+    return value
+
+
 def _now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
@@ -372,6 +398,32 @@ class CommunityStore:
             _now(),
             user_id,
         )
+
+    async def update_profile(
+        self,
+        *,
+        user_id: str,
+        display_name: str,
+        bio: str,
+        visibility: str,
+    ) -> ProfileRecord:
+        """Update the creator's editable profile fields. Validated by the caller."""
+
+        changed = await self.db.execute(
+            "UPDATE profiles SET display_name = ?, bio = ?, visibility = ?, "
+            "updated_at = ? WHERE user_id = ?",
+            display_name,
+            bio,
+            visibility,
+            _now(),
+            user_id,
+        )
+        if not changed:
+            raise LookupError("Profile not found")
+        profile = await self.get_profile_by_user(user_id)
+        if profile is None:
+            raise RuntimeError("Profile update was not persisted")
+        return profile
 
     # -- Topics -------------------------------------------------------------
 

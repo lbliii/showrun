@@ -34,8 +34,12 @@ from showrun.auth import (
 )
 from showrun.community import (
     CommunityStore,
+    ProfileError,
     TechniqueCardError,
+    validate_bio,
     validate_card,
+    validate_display_name,
+    validate_visibility,
 )
 from showrun.store import LessonRecord, ReleaseRecord, ShowrunStore, UserRecord
 
@@ -235,6 +239,14 @@ class ShowrunRoutes:
             methods=["POST"],
             name="releases.unpublish",
         )(self.unpublish_release)
+        self.app.route("/settings/profile", name="community.profile.settings")(
+            self.profile_settings_page
+        )
+        self.app.route(
+            "/settings/profile",
+            methods=["POST"],
+            name="community.profile.update",
+        )(self.update_profile_settings)
         self.app.route("/discover", name="community.discover")(self.discover)
         self.app.route("/topics/{key}", name="community.topic")(self.topic_page)
         self.app.route("/creators/{handle}", name="community.profile")(self.profile_page)
@@ -832,6 +844,69 @@ class ShowrunRoutes:
         return MutationResult(f"/watch/{release.slug}")
 
     # -- Community Hub ------------------------------------------------------
+
+    async def _ensure_profile(self, user: UserRecord):
+        return await self.community.ensure_profile(
+            user_id=user.id,
+            workspace_id=user.workspace_id,
+            display_name=user.name,
+            email=user.email,
+        )
+
+    async def profile_settings_page(self, request: Request) -> Page | Response:
+        user, denied = self.require_user()
+        if denied or user is None:
+            return denied or _redirect("/login")
+        profile = await self._ensure_profile(user)
+        return Page(
+            "profile_settings.html",
+            "page_root",
+            user=user,
+            profile=profile,
+            error="",
+            saved=str(request.query.get("saved") or "") == "1",
+        )
+
+    async def update_profile_settings(self, request: Request) -> Page | Response:
+        user, denied = self.require_user()
+        if denied or user is None:
+            return denied or _redirect("/login")
+        profile = await self._ensure_profile(user)
+        form = await request.form()
+        raw_name = str(form.get("display_name") or "")
+        raw_bio = str(form.get("bio") or "")
+        raw_visibility = str(form.get("visibility") or "public")
+
+        def _reject(message: str) -> Page:
+            return Page(
+                "profile_settings.html",
+                "page_root",
+                user=user,
+                profile=replace(
+                    profile,
+                    display_name=raw_name.strip() or profile.display_name,
+                    bio=raw_bio.strip(),
+                    visibility=raw_visibility
+                    if raw_visibility in {"public", "private"}
+                    else profile.visibility,
+                ),
+                error=message,
+                saved=False,
+            )
+
+        try:
+            display_name = validate_display_name(raw_name)
+            bio = validate_bio(raw_bio)
+            visibility = validate_visibility(raw_visibility)
+        except ProfileError as exc:
+            return _reject(str(exc))
+        await self.community.update_profile(
+            user_id=user.id,
+            display_name=display_name,
+            bio=bio,
+            visibility=visibility,
+        )
+        return _redirect("/settings/profile?saved=1")
 
     async def discover(self, request: Request) -> Page:
         user = self.browser_user()

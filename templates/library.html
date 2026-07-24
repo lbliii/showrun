@@ -19,6 +19,7 @@
       <a class="quiet-button" href="/discover">Discover</a>
       {% if user %}
       <a class="library-button secondary" href="/imports/new">Import session</a>
+      <a class="quiet-button" href="/settings/profile">Profile</a>
       <a class="quiet-button" href="/settings/tokens">API tokens</a>
       <form action="/logout" method="post">
         {{ csrf_field() }}
