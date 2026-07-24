@@ -225,6 +225,26 @@ class DiscoverPage:
 
 
 @dataclass(frozen=True, slots=True)
+class ForkAncestor:
+    """One step in a technique's fork lineage: the source technique + creator."""
+
+    technique_slug: str
+    technique_title: str
+    handle: str
+    display_name: str
+
+
+@dataclass(frozen=True, slots=True)
+class _ForkSourceRow:
+    source_technique_id: str
+    technique_slug: str
+    technique_title: str
+    handle: str
+    display_name: str
+    source_lesson_id: str
+
+
+@dataclass(frozen=True, slots=True)
 class _PlayRow:
     release_id: str
     event_name: str
@@ -609,6 +629,80 @@ class CommunityStore:
                 f"'{key}' is not a known topic. Choose topics from the catalog."
             )
         return str(topic_id)
+
+    # -- Fork ancestry ------------------------------------------------------
+
+    async def existing_fork(self, workspace_id: str, request_key: str) -> str | None:
+        """Return the child lesson id of a prior fork for idempotency."""
+
+        value = await self.db.fetch_val(
+            "SELECT child_lesson_id FROM technique_forks "
+            "WHERE child_workspace_id = ? AND request_key = ?",
+            workspace_id,
+            request_key,
+        )
+        return str(value) if value else None
+
+    async def record_fork(
+        self,
+        *,
+        child_lesson_id: str,
+        child_workspace_id: str,
+        source_technique_id: str,
+        source_version_id: str,
+        source_profile_id: str,
+        request_key: str,
+    ) -> bool:
+        """Persist fork ancestry. Returns False if the request key already forked."""
+
+        inserted = await self.db.execute(
+            "INSERT INTO technique_forks "
+            "(id, child_lesson_id, child_workspace_id, source_technique_id, "
+            "source_version_id, source_profile_id, request_key, created_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?) "
+            "ON CONFLICT (child_workspace_id, request_key) DO NOTHING",
+            f"fork_{uuid4().hex}",
+            child_lesson_id,
+            child_workspace_id,
+            source_technique_id,
+            source_version_id,
+            source_profile_id,
+            request_key,
+            _now(),
+        )
+        return bool(inserted)
+
+    async def fork_ancestry(self, lesson_id: str) -> list[ForkAncestor]:
+        """The complete available ancestry chain for a lesson (nearest first)."""
+
+        chain: list[ForkAncestor] = []
+        current = lesson_id
+        seen: set[str] = set()
+        while current and current not in seen and len(chain) < 10:
+            seen.add(current)
+            row = await self.db.fetch_one(
+                _ForkSourceRow,
+                "SELECT tf.source_technique_id, t.slug AS technique_slug, "
+                "t.title AS technique_title, p.handle, p.display_name, "
+                "t.lesson_id AS source_lesson_id "
+                "FROM technique_forks tf "
+                "JOIN techniques t ON t.id = tf.source_technique_id "
+                "JOIN profiles p ON p.id = t.profile_id "
+                "WHERE tf.child_lesson_id = ?",
+                current,
+            )
+            if row is None:
+                break
+            chain.append(
+                ForkAncestor(
+                    technique_slug=row.technique_slug,
+                    technique_title=row.technique_title,
+                    handle=row.handle,
+                    display_name=row.display_name,
+                )
+            )
+            current = row.source_lesson_id
+        return chain
 
     async def list_topics(self) -> list[TopicRecord]:
         """All governed topics, for pickers and datalists."""
