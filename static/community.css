@@ -211,3 +211,39 @@
   background: #171711;
   color: #dff551;
 }
+
+.chapter-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.5rem;
+}
+
+.chapter-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid var(--line, #d8d4c8);
+  background: var(--surface, #fff);
+  color: inherit;
+  font-size: 0.82rem;
+  text-decoration: none;
+}
+
+.chapter-link:hover,
+.chapter-link:focus-visible {
+  border-color: #171711;
+}
+
+.chapter-link.is-active {
+  background: #171711;
+  color: #dff551;
+  border-color: #171711;
+}
+
+.chapter-link .chapter-index {
+  font-variant-numeric: tabular-nums;
+  opacity: 0.7;
+}
