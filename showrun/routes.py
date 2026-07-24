@@ -43,6 +43,7 @@ from showrun.community import (
     validate_handle,
     validate_visibility,
 )
+from showrun.questions import QuestionError, QuestionsStore
 from showrun.store import LessonRecord, ReleaseRecord, ShowrunStore, UserRecord
 
 
@@ -181,10 +182,12 @@ class ShowrunRoutes:
         application: App,
         store: ShowrunStore,
         community: CommunityStore,
+        questions: QuestionsStore,
     ) -> None:
         self.app = application
         self.store = store
         self.community = community
+        self.questions = questions
         self.login_throttle = LoginThrottle()
 
     def register(self) -> None:
@@ -257,6 +260,24 @@ class ShowrunRoutes:
             methods=["POST"],
             name="community.profile.update",
         )(self.update_profile_settings)
+        self.app.route("/questions", name="community.questions")(self.questions_index)
+        self.app.route("/questions/ask", name="community.questions.ask")(self.question_ask_page)
+        self.app.route(
+            "/questions",
+            methods=["POST"],
+            name="community.questions.create",
+        )(self.create_question)
+        self.app.route("/questions/{slug}", name="community.question")(self.question_page)
+        self.app.route(
+            "/questions/{slug}/answers",
+            methods=["POST"],
+            name="community.question.answer",
+        )(self.answer_question)
+        self.app.route(
+            "/questions/{slug}/accept/{answer_id}",
+            methods=["POST"],
+            name="community.question.accept",
+        )(self.accept_answer)
         self.app.route("/discover", name="community.discover")(self.discover)
         self.app.route("/topics", name="community.topics")(self.topics_index)
         self.app.route("/topics/{key}", name="community.topic")(self.topic_page)
@@ -983,6 +1004,140 @@ class ShowrunRoutes:
             prev_url=prev_url,
             next_url=next_url,
         )
+
+    # -- Questions & demonstrated answers -----------------------------------
+
+    async def questions_index(self, request: Request) -> Page:
+        user = self.browser_user()
+        questions = await self.questions.list_questions()
+        return Page("questions.html", "page_root", user=user, questions=questions)
+
+    async def question_ask_page(self, request: Request) -> Page | Response:
+        user, denied = self.require_user()
+        if denied or user is None:
+            return denied or _redirect("/login")
+        topics = await self.community.list_topics()
+        return Page(
+            "question_ask.html",
+            "page_root",
+            user=user,
+            topic_catalog=topics,
+            error="",
+            title="",
+            body="",
+            topics_value="",
+        )
+
+    async def create_question(self, request: Request) -> Page | Response:
+        user, denied = self.require_user()
+        if denied or user is None:
+            return denied or _redirect("/login")
+        profile = await self._ensure_profile(user)
+        form = await request.form()
+        title = str(form.get("title") or "")
+        body = str(form.get("body") or "")
+        topics = str(form.get("topics") or "")
+        try:
+            question = await self.questions.ask_question(
+                asker_profile_id=profile.id,
+                workspace_id=user.workspace_id,
+                title=title,
+                body=body,
+                topics=topics,
+            )
+        except QuestionError as exc:
+            catalog = await self.community.list_topics()
+            return Page(
+                "question_ask.html",
+                "page_root",
+                user=user,
+                topic_catalog=catalog,
+                error=str(exc),
+                title=title,
+                body=body,
+                topics_value=topics,
+            )
+        await self.store.record_usage(
+            "question.asked",
+            workspace_id=user.workspace_id,
+            properties={"question": question.slug},
+        )
+        return _redirect(f"/questions/{question.slug}")
+
+    async def question_page(self, slug: str, request: Request) -> Page | Response:
+        user = self.browser_user()
+        question = await self.questions.get_question(slug)
+        if question is None:
+            return Response("Question not found", status=404, content_type="text/plain")
+        answers = await self.questions.list_answers(question.id)
+        is_asker = bool(user and user.workspace_id == question.workspace_id)
+        my_techniques: list[Any] = []
+        if user is not None:
+            profile = await self._ensure_profile(user)
+            # A user answers with their own publicly-eligible techniques.
+            my_techniques = await self.community.list_techniques_by_handle(
+                profile.handle, viewer_workspace_id=None
+            )
+        return Page(
+            "question_detail.html",
+            "page_root",
+            user=user,
+            question=question,
+            answers=answers,
+            is_asker=is_asker,
+            my_techniques=my_techniques,
+        )
+
+    async def answer_question(self, slug: str, request: Request) -> MutationResult | Response:
+        user, denied = self.require_user()
+        if denied or user is None:
+            return denied or _redirect("/login")
+        profile = await self._ensure_profile(user)
+        form = await request.form()
+        technique_slug = str(form.get("technique_slug") or "").strip()
+        try:
+            _question, _answer_id = await self.questions.answer_question(
+                answerer_profile_id=profile.id,
+                workspace_id=user.workspace_id,
+                question_slug=slug,
+                technique_slug=technique_slug,
+            )
+        except QuestionError as exc:
+            return Response(str(exc), status=422, content_type="text/plain")
+        except LookupError:
+            return Response("Question not found", status=404, content_type="text/plain")
+        await self.store.record_usage(
+            "question.answered",
+            workspace_id=user.workspace_id,
+            properties={"question": slug},
+        )
+        return MutationResult(f"/questions/{slug}")
+
+    async def accept_answer(
+        self,
+        slug: str,
+        answer_id: str,
+        request: Request,
+    ) -> MutationResult | Response:
+        user, denied = self.require_user()
+        if denied or user is None:
+            return denied or _redirect("/login")
+        try:
+            await self.questions.accept_answer(
+                asker_workspace_id=user.workspace_id,
+                question_slug=slug,
+                answer_id=answer_id,
+            )
+        except PermissionError:
+            return Response("Only the asker can accept.", status=403, content_type="text/plain")
+        except LookupError:
+            return Response("Not found", status=404, content_type="text/plain")
+        await self.store.record_usage(
+            "answer.accepted",
+            workspace_id=user.workspace_id,
+            properties={"question": slug},
+        )
+        return MutationResult(f"/questions/{slug}")
 
     async def profile_page(self, handle: str, request: Request) -> Page | Response:
         user = self.browser_user()

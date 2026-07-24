@@ -1,0 +1,58 @@
+{% extends "layout.html" %}
+
+{% block title %}Questions · Showrun{% end %}
+
+{% block head_extra %}
+<meta name="description" content="Ask concrete agent-task questions and get demonstrated answers.">
+<link rel="stylesheet" href="/static/library.css">
+<link rel="stylesheet" href="/static/community.css">
+{% end %}
+
+{% block content %}
+{% block page_root %}
+<div class="library-shell">
+  <header class="library-nav">
+    <a class="brand" href="/">
+      <span class="brand-mark">SR</span>
+      <span>Showrun</span>
+    </a>
+    <nav aria-label="Primary">
+      <a class="quiet-button" href="/discover">Discover</a>
+      <a class="quiet-button" href="/topics">Topics</a>
+      {% if user %}<a class="quiet-button" href="/">Your library</a>{% endif %}
+    </nav>
+  </header>
+
+  <section class="library-hero">
+    <div>
+      <p class="eyebrow">Demonstrated answers</p>
+      <h1>Questions</h1>
+      <p>Ask a concrete agent task. Answers are published techniques you can watch — not unsupported posts.</p>
+    </div>
+    {% if user %}<a class="hero-action" href="/questions/ask">Ask a question <span>→</span></a>{% endif %}
+  </section>
+
+  <section class="library-section">
+    {% if questions %}
+    <ul class="question-list">
+      {% for q in questions %}
+      <li class="question-row">
+        <a class="question-title" href="/questions/{{ q.slug }}">{{ q.title }}</a>
+        <div class="technique-meta">
+          <a href="/creators/{{ q.asker_handle }}">@{{ q.asker_handle }}</a>
+          <span>{{ q.answer_count }} answer{% if q.answer_count != 1 %}s{% endif %}</span>
+          {% if q.accepted %}<span class="version-current">accepted</span>{% endif %}
+        </div>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty-library">
+      <strong>No questions yet.</strong>
+      {% if user %}<p><a href="/questions/ask">Ask the first one.</a></p>{% endif %}
+    </div>
+    {% endif %}
+  </section>
+</div>
+{% end %}
+{% end %}

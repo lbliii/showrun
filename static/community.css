@@ -262,3 +262,47 @@
   margin-top: 1.5rem;
   font-size: 0.9rem;
 }
+
+.question-list,
+.answer-list {
+  list-style: none;
+  padding: 0;
+  margin: 0.5rem 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.question-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line, #d8d4c8);
+  border-radius: 12px;
+}
+
+.question-title {
+  font-weight: 600;
+  text-decoration: none;
+  color: inherit;
+}
+
+.answer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--line, #d8d4c8);
+  border-radius: 12px;
+}
+
+.answer-row.is-accepted {
+  border-color: #7a9b36;
+  background: #f3f9e6;
+}
+
+.answer-form {
+  margin-top: 1.5rem;
+}
