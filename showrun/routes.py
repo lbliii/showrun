@@ -292,6 +292,11 @@ class ShowrunRoutes:
             methods=["POST"],
             name="community.technique.publish",
         )(self.publish_technique)
+        self.app.route(
+            "/techniques/{slug}/fork",
+            methods=["POST"],
+            name="community.technique.fork",
+        )(self.fork_technique)
         self.app.route("/watch/{slug}", name="releases.watch")(self.watch)
         self.app.route("/embed/{slug}", name="releases.embed")(self.embed)
         self.app.route("/releases/{slug}/dvd.json", name="releases.manifest")(self.release_manifest)
@@ -663,7 +668,7 @@ class ShowrunRoutes:
         if lesson is None:
             return Response("Lesson not found", status=404, content_type="text/plain")
         releases = await self.store.list_releases(lesson.id, workspace_id=user.workspace_id)
-        return self._editor_page(
+        return await self._editor_page(
             lesson,
             error="",
             saved=str(request.query.get("saved") or "") == "1",
@@ -688,7 +693,7 @@ class ShowrunRoutes:
             lesson=lesson,
         )
 
-    def _editor_page(
+    async def _editor_page(
         self,
         lesson: LessonRecord,
         *,
@@ -696,6 +701,8 @@ class ShowrunRoutes:
         releases: list[ReleaseRecord],
         saved: bool = False,
     ) -> Page:
+        # Show source attribution before publication when this lesson is a fork.
+        ancestry = await self.community.fork_ancestry(lesson.id)
         return Page(
             "editor.html",
             "page_root",
@@ -704,6 +711,7 @@ class ShowrunRoutes:
             lesson=lesson,
             releases=releases,
             saved=saved,
+            fork_source=ancestry[0] if ancestry else None,
         )
 
     async def update_lesson(self, request: Request, lesson_id: str) -> Page | Response:
@@ -766,7 +774,7 @@ class ShowrunRoutes:
             )
         except ValueError as exc:
             releases = await self.store.list_releases(lesson.id, workspace_id=user.workspace_id)
-            return self._editor_page(lesson, error=str(exc), releases=releases)
+            return await self._editor_page(lesson, error=str(exc), releases=releases)
         await self.store.update_lesson(
             lesson_id,
             workspace_id=user.workspace_id,
@@ -1214,6 +1222,7 @@ class ShowrunRoutes:
                 embed_query = f"?start={round(start, 1)}"
         embed_src = f"/embed/{card.release_slug}{embed_query}"
         canonical = f"{_base_url(request)}/techniques/{card.slug}"
+        ancestry = await self.community.fork_ancestry(card.lesson_id)
         if not is_owner:
             await self.store.record_usage(
                 "technique.viewed",
@@ -1233,6 +1242,8 @@ class ShowrunRoutes:
             active_chapter=active_chapter,
             embed_src=embed_src,
             canonical_url=canonical,
+            ancestry=ancestry,
+            can_fork=user is not None,
             can_embed=release is not None,
             is_owner=is_owner,
         )
@@ -1352,6 +1363,53 @@ class ShowrunRoutes:
                 properties={"technique": technique.slug},
             )
         return _redirect(f"/techniques/{technique.slug}")
+
+    async def fork_technique(self, slug: str, request: Request) -> MutationResult | Response:
+        user, denied = self.require_user()
+        if denied or user is None:
+            return denied or _redirect("/login")
+        # Only a publicly eligible technique can be forked.
+        card = await self.community.get_technique_card(slug)
+        if card is None:
+            return Response("Technique not found", status=404, content_type="text/plain")
+        # Idempotent per source technique: re-forking returns the same draft.
+        request_key = f"technique:{card.id}"
+        existing = await self.community.existing_fork(user.workspace_id, request_key)
+        if existing is not None:
+            return MutationResult(f"/lessons/{existing}/edit")
+        release = await self.store.get_release(card.release_slug)
+        if release is None:
+            return Response("Source release unavailable", status=409, content_type="text/plain")
+        # The source artifact re-crosses the sanitization/validation boundary.
+        child = await self.store.create_draft(
+            replace(release.artifact, title=f"Fork of {card.title}"[:120]),
+            workspace_id=user.workspace_id,
+            source_sha256=hashlib.sha256(
+                f"fork:{card.version_id}:{os.urandom(16).hex()}".encode()
+            ).hexdigest(),
+        )
+        source_profile = await self.community.get_public_profile(card.handle)
+        if source_profile is not None:
+            inserted = await self.community.record_fork(
+                child_lesson_id=child.id,
+                child_workspace_id=user.workspace_id,
+                source_technique_id=card.id,
+                source_version_id=card.version_id,
+                source_profile_id=source_profile.id,
+                request_key=request_key,
+            )
+            if not inserted:
+                # Lost a race; reuse the winning fork's draft.
+                winner = await self.community.existing_fork(user.workspace_id, request_key)
+                if winner is not None and winner != child.id:
+                    return MutationResult(f"/lessons/{winner}/edit")
+        await self.store.record_usage(
+            "technique.forked",
+            workspace_id=user.workspace_id,
+            lesson_id=child.id,
+            properties={"source": card.slug},
+        )
+        return MutationResult(f"/lessons/{child.id}/edit")
 
     async def _release(self, slug: str) -> ReleaseRecord | Response:
         release = await self.store.get_release(slug)

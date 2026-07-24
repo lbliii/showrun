@@ -35,6 +35,15 @@
     </div>
   </section>
 
+  {% if fork_source %}
+  <section class="warning-panel">
+    <strong>Forked technique</strong>
+    <p>Adapted from <a href="/techniques/{{ fork_source.technique_slug }}">{{ fork_source.technique_title }}</a>
+      by <a href="/creators/{{ fork_source.handle }}">@{{ fork_source.handle }}</a>. This attribution is
+      preserved on any technique you publish from this draft.</p>
+  </section>
+  {% endif %}
+
   {% if artifact.warnings %}
   <section class="warning-panel">
     <strong>Import report</strong>

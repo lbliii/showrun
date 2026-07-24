@@ -306,3 +306,13 @@
 .answer-form {
   margin-top: 1.5rem;
 }
+
+.fork-ancestry {
+  margin: 0.25rem 0 0;
+  font-size: 0.85rem;
+  color: var(--muted, #57534a);
+}
+
+.fork-ancestry a {
+  color: inherit;
+}

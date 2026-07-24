@@ -42,6 +42,12 @@
       {% if card.status != "published" %}<span class="status status-draft">{{ card.status }}</span>{% endif %}
     </div>
 
+    {% if ancestry %}
+    <p class="fork-ancestry">Forked from
+      {% for ancestor in ancestry %}<a href="/techniques/{{ ancestor.technique_slug }}">{{ ancestor.technique_title }}</a> by <a href="/creators/{{ ancestor.handle }}">@{{ ancestor.handle }}</a>{% if not loop.last %} ← {% endif %}{% endfor %}
+    </p>
+    {% endif %}
+
     {% if topics %}
     <div class="topic-chips">
       {% for topic in topics %}
@@ -72,6 +78,12 @@
       <a class="library-button" href="/watch/{{ card.release_slug }}">Open full watch page →</a>
       {% if is_owner %}
       <a class="quiet-button" href="/lessons/{{ card.lesson_id }}/technique">Edit technique</a>
+      {% endif %}
+      {% if can_fork %}
+      <form action="/techniques/{{ card.slug }}/fork" method="post">
+        {{ csrf_field() }}
+        <button class="quiet-button" type="submit">Fork into a private draft</button>
+      </form>
       {% endif %}
     </div>
 
