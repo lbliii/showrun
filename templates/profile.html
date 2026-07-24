@@ -29,7 +29,25 @@
       <p class="technique-meta">@{{ profile.handle }}{% if is_owner %} · <span class="status status-{{ profile.visibility == 'public' and 'published' or 'draft' }}">{{ profile.visibility }}</span>{% endif %}</p>
       {% if profile.bio %}<p>{{ profile.bio }}</p>{% endif %}
     </div>
-    <span class="showrun-badge">{{ techniques | length }} techniques</span>
+    <span class="showrun-badge">{{ signals.published_techniques }} techniques</span>
+  </section>
+
+  <section class="library-section">
+    <div class="metric-strip" aria-label="Craft signals">
+      <div><strong>{{ signals.published_techniques }}</strong><span>published</span></div>
+      <div><strong>{{ signals.topics | length }}</strong><span>topics</span></div>
+      <div><strong>{{ signals.reproductions }}</strong><span>reproductions</span></div>
+      <div><strong>{{ signals.forks }}</strong><span>forks</span></div>
+      <div><strong>{{ signals.citations }}</strong><span>citations</span></div>
+    </div>
+    {% if signals.topics %}
+    <div class="topic-chips">
+      {% for topic in signals.topics %}
+      <a class="topic-chip" href="/topics/{{ topic.key }}">{{ topic.label }}</a>
+      {% endfor %}
+    </div>
+    {% endif %}
+    <p class="signal-note">Reproductions, forks, and citations are demonstrated signals — they populate as others build on this creator's work.</p>
   </section>
 
   <section class="library-section">

@@ -970,12 +970,14 @@ class ShowrunRoutes:
             current,
             viewer_workspace_id=viewer_workspace,
         )
+        signals = await self.community.craft_signals(current)
         return Page(
             "profile.html",
             "page_root",
             user=user,
             profile=profile,
             techniques=techniques,
+            signals=signals,
             is_owner=bool(user and user.workspace_id == profile.workspace_id),
         )
 

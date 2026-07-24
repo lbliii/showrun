@@ -102,6 +102,23 @@ class TopicRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class CraftSignals:
+    """Public contribution signals for a creator, derived from source records.
+
+    No opaque authority score: each signal is itemized and reproducible from the
+    underlying eligible records. Reproductions/forks/citations are first-class
+    but remain 0 until those features land (#18/#19), never fabricated.
+    """
+
+    published_techniques: int
+    topics: tuple[TopicRecord, ...]
+    latest_published_at: str | None
+    reproductions: int = 0
+    forks: int = 0
+    citations: int = 0
+
+
+@dataclass(frozen=True, slots=True)
 class TechniqueRecord:
     id: str
     lesson_id: str
@@ -936,6 +953,40 @@ class CommunityStore:
             f"WHERE p.handle = ? AND {public_eligibility_sql(discoverable=True)} "
             "ORDER BY tv.created_at DESC, t.id ASC",
             handle,
+        )
+
+    async def craft_signals(self, handle: str) -> CraftSignals:
+        """Reproducible public contribution signals for a creator profile.
+
+        Always eligibility-respecting (discoverable content only), so the
+        numbers reflect public contribution and match what any viewer can see.
+        """
+
+        eligible = public_eligibility_sql(discoverable=True)
+        published = await self.db.fetch_val(
+            f"SELECT COUNT(DISTINCT t.id) {_PUBLIC_FROM} "
+            f"WHERE p.handle = ? AND {eligible}",
+            handle,
+        )
+        latest = await self.db.fetch_val(
+            f"SELECT MAX(tv.created_at) {_PUBLIC_FROM} "
+            f"WHERE p.handle = ? AND {eligible}",
+            handle,
+        )
+        topics = await self.db.fetch(
+            TopicRecord,
+            "SELECT DISTINCT tp.id, tp.key, tp.label, tp.description, tp.created_at "
+            f"{_PUBLIC_FROM} "
+            "JOIN technique_topics tt ON tt.technique_id = t.id "
+            "JOIN topics tp ON tp.id = tt.topic_id "
+            f"WHERE p.handle = ? AND {eligible} "
+            "ORDER BY tp.key",
+            handle,
+        )
+        return CraftSignals(
+            published_techniques=int(published or 0),
+            topics=tuple(topics),
+            latest_published_at=str(latest) if latest else None,
         )
 
     async def public_technique_count(self, *, topic: str = "") -> int:
