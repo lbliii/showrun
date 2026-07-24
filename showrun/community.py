@@ -1054,6 +1054,47 @@ class CommunityStore:
             card.id,
         )
 
+    async def list_version_views(
+        self,
+        slug: str,
+        *,
+        viewer_workspace_id: str | None = None,
+    ) -> list[TechniqueVersionView]:
+        """Version history joined to each version's immutable source release.
+
+        Each row exposes the backing release slug so the page can link to the
+        exact immutable release a version was published from, and whether that
+        release is still active (public + not unpublished).
+        """
+
+        card = await self.get_technique_card(slug, viewer_workspace_id=viewer_workspace_id)
+        if card is None:
+            return []
+        return await self.db.fetch(
+            TechniqueVersionView,
+            "SELECT tv.version, tv.created_at, tv.limitations, r.slug AS release_slug, "
+            "CASE WHEN r.visibility = 'public' AND r.disabled_at IS NULL "
+            "THEN 1 ELSE 0 END AS release_active "
+            "FROM technique_versions tv JOIN releases r ON r.id = tv.release_id "
+            "WHERE tv.technique_id = ? ORDER BY tv.version DESC",
+            card.id,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class TechniqueVersionView:
+    """A version paired with its immutable source release, for display."""
+
+    version: int
+    created_at: str
+    limitations: str
+    release_slug: str
+    release_active: int
+
+    @property
+    def active(self) -> bool:
+        return bool(self.release_active)
+
 
 @dataclass(frozen=True, slots=True)
 class _TopicCountRow:
