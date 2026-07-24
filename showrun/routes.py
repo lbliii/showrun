@@ -922,14 +922,14 @@ class ShowrunRoutes:
         user = self.browser_user()
         query = str(request.query.get("q") or "")[:100]
         topic = str(request.query.get("topic") or "")[:64]
-        techniques = await self.community.list_public_techniques(query=query, topic=topic)
+        ranked = await self.community.ranked_techniques(query=query, topic=topic)
         topics = await self.community.list_public_topics()
         total = await self.community.public_technique_count()
         return Page(
             "discover.html",
             "page_root",
             user=user,
-            techniques=techniques,
+            ranked=ranked,
             topics=topics,
             total=total,
             query=query,
