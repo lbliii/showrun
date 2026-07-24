@@ -991,7 +991,7 @@ class ShowrunRoutes:
         if card is None:
             return Response("Technique not found", status=404, content_type="text/plain")
         topics = await self.community.list_topics_for_technique(card.id)
-        versions = await self.community.list_versions(
+        versions = await self.community.list_version_views(
             slug,
             viewer_workspace_id=viewer_workspace,
         )

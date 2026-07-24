@@ -86,13 +86,32 @@
     {% if versions %}
     <section class="technique-versions">
       <h2>Version history</h2>
-      <ul>
+      <ul class="version-list">
         {% for version in versions %}
-        <li><strong>v{{ version.version }}</strong> · {{ version.created_at }}</li>
+        <li class="version-row">
+          <div>
+            <strong>v{{ version.version }}</strong>
+            {% if version.version == card.version %}<span class="version-current">current</span>{% endif %}
+            <small>{{ version.created_at }}</small>
+          </div>
+          {% if version.active %}
+          <a class="quiet-button" href="/watch/{{ version.release_slug }}">Source release →</a>
+          {% else %}
+          <span class="status status-draft">release unavailable</span>
+          {% endif %}
+        </li>
         {% endfor %}
       </ul>
     </section>
     {% endif %}
+
+    <section class="technique-lineage">
+      <h2>Adaptations &amp; reproductions</h2>
+      <div class="empty-library">
+        <strong>No forks or reproductions yet.</strong>
+        <p>When others fork this technique or reproduce it with another agent or model, their attributed work will appear here.</p>
+      </div>
+    </section>
   </article>
 </div>
 {% end %}
