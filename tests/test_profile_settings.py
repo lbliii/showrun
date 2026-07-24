@@ -84,10 +84,12 @@ async def test_settings_page_provisions_and_edits_profile(tmp_path: Path) -> Non
         assert "Profile settings" in page.text
         cookie = _updated_cookie(page, cookie)
 
+        handle = re.search(r'name="handle"[^>]*value="([^"]+)"', page.text).group(1)
         updated = await client.post(
             "/settings/profile",
             body=urlencode(
                 {
+                    "handle": handle,
                     "display_name": "Ada Lovelace",
                     "bio": "I demonstrate resilient agent tool use.",
                     "visibility": "public",
@@ -151,6 +153,7 @@ async def test_settings_rejects_invalid_and_toggles_private(tmp_path: Path) -> N
             "/settings/profile",
             body=urlencode(
                 {
+                    "handle": profile.handle,
                     "display_name": "Grace Hopper",
                     "bio": "Compilers and agents.",
                     "visibility": "private",

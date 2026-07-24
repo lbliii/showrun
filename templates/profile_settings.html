@@ -34,6 +34,12 @@
     <form class="stacked-form" action="/settings/profile" method="post">
       {{ csrf_field() }}
       <label>
+        <span>Handle <small>(your public URL: /creators/&lt;handle&gt;)</small></span>
+        <input type="text" name="handle" minlength="3" maxlength="32" required
+          pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?"
+          value="{{ profile.handle }}">
+      </label>
+      <label>
         <span>Display name</span>
         <input type="text" name="display_name" maxlength="80" required
           value="{{ profile.display_name }}">
