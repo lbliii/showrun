@@ -173,6 +173,50 @@ class TechniqueCard:
     created_at: str
 
 
+# --- Deterministic discovery ranking ---------------------------------------
+#
+# The discovery feed is explainable and non-personalized. A technique's score
+# is a weighted sum of demonstrated-reuse signals plus completion quality;
+# recency breaks ties. Reproduction and citation counts are 0 until #19/#20
+# land, so today ranking is driven by completion quality then recency — but the
+# formula and weights are already in place. See docs/discovery-ranking.md.
+RANK_WEIGHT_REPRODUCTION = 5
+RANK_WEIGHT_CITATION = 4
+RANK_WEIGHT_COMPLETION = 1  # applied to completion_quality // 10 (0-10 points)
+# No single creator may occupy more than this many slots before others appear.
+RANK_DIVERSITY_CAP = 2
+
+
+@dataclass(frozen=True, slots=True)
+class RankedTechnique:
+    """A discovery result with its transparent ranking breakdown."""
+
+    card: TechniqueCard
+    reproductions: int
+    citations: int
+    completion_quality: int
+    score: int
+
+    @property
+    def explanation(self) -> str:
+        parts: list[str] = []
+        if self.reproductions:
+            parts.append(f"{self.reproductions} reproductions")
+        if self.citations:
+            parts.append(f"{self.citations} citations")
+        if self.completion_quality:
+            parts.append(f"{self.completion_quality}% completion")
+        parts.append("recency")
+        return "Ranked by " + ", ".join(parts)
+
+
+@dataclass(frozen=True, slots=True)
+class _PlayRow:
+    release_id: str
+    event_name: str
+    n: int
+
+
 @dataclass(frozen=True, slots=True)
 class TechniqueCardInput:
     """Validated teaching metadata for a technique version."""
@@ -930,6 +974,80 @@ class CommunityStore:
             f"ORDER BY tv.created_at DESC, t.id ASC LIMIT {bounded}",
             *params,
         )
+
+    async def _completion_quality(self, release_ids: list[str]) -> dict[str, int]:
+        """Completion rate (0-100) per release from playback usage events."""
+
+        if not release_ids:
+            return {}
+        placeholders = ",".join("?" for _ in release_ids)
+        rows = await self.db.fetch(
+            _PlayRow,
+            "SELECT release_id, event_name, COUNT(*) AS n FROM usage_events "
+            f"WHERE release_id IN ({placeholders}) "
+            "AND event_name IN ('playback.started', 'playback.completed') "
+            "GROUP BY release_id, event_name",
+            *release_ids,
+        )
+        plays: dict[str, int] = {}
+        completions: dict[str, int] = {}
+        for row in rows:
+            if row.event_name == "playback.started":
+                plays[row.release_id] = row.n
+            elif row.event_name == "playback.completed":
+                completions[row.release_id] = row.n
+        quality: dict[str, int] = {}
+        for rid in release_ids:
+            played = plays.get(rid, 0)
+            done = completions.get(rid, 0)
+            quality[rid] = min(100, round(done / played * 100)) if played else 0
+        return quality
+
+    async def ranked_techniques(
+        self,
+        *,
+        query: str = "",
+        topic: str = "",
+        limit: int = 50,
+    ) -> list[RankedTechnique]:
+        """Discovery feed ordered by the deterministic, explainable formula."""
+
+        cards = await self.list_public_techniques(query=query, topic=topic, limit=100)
+        if not cards:
+            return []
+        quality = await self._completion_quality([card.release_id for card in cards])
+        ranked = [
+            RankedTechnique(
+                card=card,
+                reproductions=0,
+                citations=0,
+                completion_quality=quality.get(card.release_id, 0),
+                score=(
+                    RANK_WEIGHT_REPRODUCTION * 0
+                    + RANK_WEIGHT_CITATION * 0
+                    + RANK_WEIGHT_COMPLETION * (quality.get(card.release_id, 0) // 10)
+                ),
+            )
+            for card in cards
+        ]
+        # Stable multi-key sort: score desc, then recency (created_at) desc,
+        # then id asc. Applied lowest-priority first so precedence is correct.
+        ranked.sort(key=lambda r: r.card.id)
+        ranked.sort(key=lambda r: r.card.created_at, reverse=True)
+        ranked.sort(key=lambda r: r.score, reverse=True)
+        # Creator diversity cap: defer a creator's extra results below others.
+        seen: dict[str, int] = {}
+        primary: list[RankedTechnique] = []
+        overflow: list[RankedTechnique] = []
+        for entry in ranked:
+            handle = entry.card.handle
+            if seen.get(handle, 0) < RANK_DIVERSITY_CAP:
+                primary.append(entry)
+                seen[handle] = seen.get(handle, 0) + 1
+            else:
+                overflow.append(entry)
+        bounded = max(1, min(int(limit), 100))
+        return (primary + overflow)[:bounded]
 
     async def list_techniques_by_handle(
         self,

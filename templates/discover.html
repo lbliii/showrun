@@ -60,17 +60,18 @@
       {% if query %}<a class="quiet-button" href="/discover">Clear</a>{% endif %}
     </form>
 
-    {% if techniques %}
+    {% if ranked %}
     <div class="technique-grid">
-      {% for card in techniques %}
+      {% for entry in ranked %}
       <article class="technique-card">
-        <a class="technique-title" href="/techniques/{{ card.slug }}"><strong>{{ card.title }}</strong></a>
-        <p class="technique-problem">{{ card.problem }}</p>
-        <p class="technique-summary">{{ card.summary }}</p>
+        <a class="technique-title" href="/techniques/{{ entry.card.slug }}"><strong>{{ entry.card.title }}</strong></a>
+        <p class="technique-problem">{{ entry.card.problem }}</p>
+        <p class="technique-summary">{{ entry.card.summary }}</p>
         <div class="technique-meta">
-          <a href="/creators/{{ card.handle }}">@{{ card.handle }}</a>
-          <span>v{{ card.version }}</span>
+          <a href="/creators/{{ entry.card.handle }}">@{{ entry.card.handle }}</a>
+          <span>v{{ entry.card.version }}</span>
         </div>
+        <p class="rank-why" title="{{ entry.explanation }}">{{ entry.explanation }}</p>
       </article>
       {% endfor %}
     </div>
