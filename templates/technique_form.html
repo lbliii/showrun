@@ -1,0 +1,88 @@
+{% extends "layout.html" %}
+
+{% block title %}Publish technique · Showrun{% end %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="/static/library.css">
+<link rel="stylesheet" href="/static/community.css">
+<link rel="stylesheet" href="/static/forms.css">
+{% end %}
+
+{% block content %}
+{% block page_root %}
+<div class="library-shell">
+  <header class="library-nav">
+    <a class="brand" href="/">
+      <span class="brand-mark">SR</span>
+      <span>Showrun</span>
+    </a>
+    <nav>
+      <a class="quiet-button" href="/lessons/{{ lesson.id }}/edit">Back to editor</a>
+      <a class="quiet-button" href="/discover">Discover</a>
+    </nav>
+  </header>
+
+  <section class="technique-detail">
+    <p class="eyebrow">Publish a demonstrated technique</p>
+    <h1>Technique card</h1>
+    <p>Describe the pattern this run demonstrates. The card is public and immutable; editing it creates a new version.</p>
+
+    {% if error %}<div class="form-error">{{ error }}</div>{% endif %}
+
+    {% if not public_release %}
+    <div class="form-error">
+      Publish a <strong>public</strong> release of this lesson first. A technique
+      version can reference only a public, active release.
+    </div>
+    <a class="library-button secondary" href="/lessons/{{ lesson.id }}/edit">Go to release history</a>
+    {% else %}
+    <form class="stacked-form" action="/techniques" method="post">
+      {{ csrf_field() }}
+      <input type="hidden" name="release_slug" value="{{ release_slug }}">
+      <label>
+        <span>Problem</span>
+        <input type="text" name="problem" maxlength="400" required
+          value="{% if card %}{{ card.problem }}{% endif %}"
+          placeholder="The concrete agent task or failure mode">
+      </label>
+      <label>
+        <span>Pattern</span>
+        <textarea name="pattern" rows="4" maxlength="2000" required
+          placeholder="What the technique does and why it works">{% if card %}{{ card.pattern }}{% endif %}</textarea>
+      </label>
+      <label>
+        <span>When to use it</span>
+        <textarea name="use_when" rows="2" maxlength="600" required
+          placeholder="The conditions where this technique applies">{% if card %}{{ card.use_when }}{% endif %}</textarea>
+      </label>
+      <label>
+        <span>Learning objective</span>
+        <input type="text" name="objective" maxlength="400" required
+          value="{% if card %}{{ card.objective }}{% endif %}"
+          placeholder="What a viewer should learn">
+      </label>
+      <label>
+        <span>Limitations <small>(optional)</small></span>
+        <textarea name="limitations" rows="2" maxlength="1000"
+          placeholder="Where this technique breaks down">{% if card %}{{ card.limitations }}{% endif %}</textarea>
+      </label>
+      <label>
+        <span>Summary</span>
+        <input type="text" name="summary" maxlength="600" required
+          value="{% if card %}{{ card.summary }}{% endif %}"
+          placeholder="One-line summary for discovery">
+      </label>
+      <label>
+        <span>Topics <small>(comma separated, up to 5)</small></span>
+        <input type="text" name="topics" value="{{ topics_value }}"
+          placeholder="reliability, tools, planning">
+      </label>
+      <button class="library-button" type="submit">
+        {% if card %}Publish new version{% else %}Publish technique{% endif %}
+      </button>
+    </form>
+    {% endif %}
+  </section>
+</div>
+{% end %}
+{% end %}

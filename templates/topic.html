@@ -1,0 +1,56 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ topic_key }} techniques · Showrun{% end %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="/static/library.css">
+<link rel="stylesheet" href="/static/community.css">
+{% end %}
+
+{% block content %}
+{% block page_root %}
+<div class="library-shell">
+  <header class="library-nav">
+    <a class="brand" href="/">
+      <span class="brand-mark">SR</span>
+      <span>Showrun</span>
+    </a>
+    <nav>
+      <a class="quiet-button" href="/discover">Discover</a>
+      {% if user %}<a class="quiet-button" href="/">Your library</a>{% endif %}
+    </nav>
+  </header>
+
+  <section class="library-hero">
+    <div>
+      <p class="eyebrow">Topic</p>
+      <h1>{{ topic_key }}</h1>
+      <p>Demonstrated techniques tagged with this topic.</p>
+    </div>
+    <span class="showrun-badge">{{ count }} techniques</span>
+  </section>
+
+  <section class="library-section">
+    {% if techniques %}
+    <div class="technique-grid">
+      {% for card in techniques %}
+      <article class="technique-card">
+        <a class="technique-title" href="/techniques/{{ card.slug }}"><strong>{{ card.title }}</strong></a>
+        <p class="technique-problem">{{ card.problem }}</p>
+        <p class="technique-summary">{{ card.summary }}</p>
+        <div class="technique-meta">
+          <a href="/creators/{{ card.handle }}">@{{ card.handle }}</a>
+          <span>v{{ card.version }}</span>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-library">
+      <strong>No techniques in this topic yet.</strong>
+    </div>
+    {% endif %}
+  </section>
+</div>
+{% end %}
+{% end %}

@@ -1,0 +1,85 @@
+{% extends "layout.html" %}
+
+{% block title %}Discover techniques · Showrun{% end %}
+
+{% block head_extra %}
+<meta name="description" content="Learn agent craft from real runs. Discover demonstrated techniques backed by immutable Showrun releases.">
+<link rel="stylesheet" href="/static/library.css">
+<link rel="stylesheet" href="/static/community.css">
+{% end %}
+
+{% block content %}
+{% block page_root %}
+<div class="library-shell">
+  <header class="library-nav">
+    <a class="brand" href="/">
+      <span class="brand-mark">SR</span>
+      <span>Showrun</span>
+    </a>
+    <nav>
+      <a class="quiet-button" href="/discover">Discover</a>
+      {% if user %}
+      <a class="quiet-button" href="/">Your library</a>
+      <a class="library-button secondary" href="/imports/new">Import session</a>
+      {% else %}
+      <a class="quiet-button" href="/login">Sign in</a>
+      <a class="library-button" href="/signup">Create your library</a>
+      {% endif %}
+    </nav>
+  </header>
+
+  <section class="library-hero">
+    <div>
+      <p class="eyebrow">The community hub</p>
+      <h1>Learn agent craft from real runs.</h1>
+      <p>Every technique here is backed by an immutable Showrun release you can watch and inspect.</p>
+    </div>
+    <span class="showrun-badge">{{ total }} techniques</span>
+  </section>
+
+  {% if topics %}
+  <section class="library-section">
+    <div class="topic-chips">
+      <a class="topic-chip{% if not active_topic %} is-active{% endif %}" href="/discover">All</a>
+      {% for entry in topics %}
+      <a class="topic-chip{% if active_topic == entry[0].key %} is-active{% endif %}" href="/topics/{{ entry[0].key }}">{{ entry[0].label }} · {{ entry[1] }}</a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="library-section">
+    <form class="library-filters" action="/discover" method="get">
+      <label>
+        <span>Search techniques</span>
+        <input type="search" name="q" value="{{ query }}" placeholder="Problem, pattern, or summary">
+      </label>
+      {% if active_topic %}<input type="hidden" name="topic" value="{{ active_topic }}">{% endif %}
+      <button class="quiet-button" type="submit">Search</button>
+      {% if query %}<a class="quiet-button" href="/discover">Clear</a>{% endif %}
+    </form>
+
+    {% if techniques %}
+    <div class="technique-grid">
+      {% for card in techniques %}
+      <article class="technique-card">
+        <a class="technique-title" href="/techniques/{{ card.slug }}"><strong>{{ card.title }}</strong></a>
+        <p class="technique-problem">{{ card.problem }}</p>
+        <p class="technique-summary">{{ card.summary }}</p>
+        <div class="technique-meta">
+          <a href="/creators/{{ card.handle }}">@{{ card.handle }}</a>
+          <span>v{{ card.version }}</span>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+    {% else %}
+    <div class="empty-library">
+      <strong>No techniques yet.</strong>
+      <p>Published techniques backed by public releases appear here.</p>
+    </div>
+    {% endif %}
+  </section>
+</div>
+{% end %}
+{% end %}

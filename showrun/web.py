@@ -16,6 +16,7 @@ from chirp.middleware.stack import secure_stack
 
 from showrun.artifacts import load_artifact
 from showrun.auth import verify_api_token
+from showrun.community import CommunityStore
 from showrun.embed_policy import PublicEmbedPolicy
 from showrun.golden import sync_golden
 from showrun.routes import ShowrunRoutes
@@ -70,6 +71,7 @@ def create_app(
     # production headers without appending a second, conflicting CSP policy.
     headers = SecurityHeadersConfig(content_security_policy=None)
     store = ShowrunStore(application.db)
+    community = CommunityStore(application.db)
     auth = AuthConfig(
         load_user=store.get_user,
         verify_token=lambda token: verify_api_token(store, token),
@@ -91,5 +93,5 @@ def create_app(
         await sync_golden(store, golden)
         await store.publish("lesson_golden", "public")
 
-    ShowrunRoutes(application, store).register()
+    ShowrunRoutes(application, store, community).register()
     return application

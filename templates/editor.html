@@ -162,6 +162,9 @@
         <span class="status status-draft">unpublished</span>
         {% else %}
         <a class="library-button secondary" href="/watch/{{ release.slug }}">Watch</a>
+        {% if release.visibility == "public" %}
+        <a class="quiet-button" href="/lessons/{{ lesson.id }}/technique">Publish as technique</a>
+        {% endif %}
         <form action="/releases/{{ release.slug }}/unpublish" method="post">
           {{ csrf_field() }}
           <button class="quiet-button" type="submit">Unpublish</button>
