@@ -1,0 +1,49 @@
+{% extends "layout.html" %}
+
+{% block title %}Topics · Showrun{% end %}
+
+{% block head_extra %}
+<meta name="description" content="Browse demonstrated agent techniques by governed topic.">
+<link rel="stylesheet" href="/static/library.css">
+<link rel="stylesheet" href="/static/community.css">
+{% end %}
+
+{% block content %}
+{% block page_root %}
+<div class="library-shell">
+  <header class="library-nav">
+    <a class="brand" href="/">
+      <span class="brand-mark">SR</span>
+      <span>Showrun</span>
+    </a>
+    <nav aria-label="Primary">
+      <a class="quiet-button" href="/discover">Discover</a>
+      {% if user %}<a class="quiet-button" href="/">Your library</a>{% endif %}
+    </nav>
+  </header>
+
+  <section class="library-hero">
+    <div>
+      <p class="eyebrow">Governed taxonomy</p>
+      <h1>Topics</h1>
+      <p>Every technique is tagged from this curated catalog, so discovery stays consistent.</p>
+    </div>
+    <span class="showrun-badge">{{ catalog | length }} topics</span>
+  </section>
+
+  <section class="library-section">
+    <div class="technique-grid">
+      {% for entry in catalog %}
+      <article class="technique-card">
+        <a class="technique-title" href="/topics/{{ entry[0].key }}"><strong>{{ entry[0].label }}</strong></a>
+        {% if entry[0].description %}<p class="technique-summary">{{ entry[0].description }}</p>{% endif %}
+        <div class="technique-meta">
+          <span>{{ entry[1] }} technique{% if entry[1] != 1 %}s{% endif %}</span>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+</div>
+{% end %}
+{% end %}

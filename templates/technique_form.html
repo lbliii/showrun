@@ -73,9 +73,13 @@
           placeholder="One-line summary for discovery">
       </label>
       <label>
-        <span>Topics <small>(comma separated, up to 5)</small></span>
-        <input type="text" name="topics" value="{{ topics_value }}"
+        <span>Topics <small>(comma separated, up to 5 — from the catalog)</small></span>
+        <input type="text" name="topics" value="{{ topics_value }}" list="topic-catalog"
           placeholder="reliability, tools, planning">
+        <datalist id="topic-catalog">
+          {% for topic in topic_catalog %}<option value="{{ topic.key }}">{{ topic.label }}</option>{% endfor %}
+        </datalist>
+        <small class="signal-note">Available: {% for topic in topic_catalog %}{{ topic.key }}{% if not loop.last %}, {% endif %}{% endfor %}</small>
       </label>
       <button class="library-button" type="submit">
         {% if card %}Publish new version{% else %}Publish technique{% endif %}

@@ -328,17 +328,17 @@ async def test_topic_aggregates_exclude_ineligible_content(tmp_path: Path) -> No
             community,
             user,
             title="Hidden topic",
-            card=_card(problem="secret", topics=("secrets",)),
+            card=_card(problem="secret", topics=("security",)),
         )
         await store.unpublish_release(r2.slug, workspace_id=user.workspace_id)
 
         topics = await community.list_public_topics()
         keys = {topic.key: count for topic, count in topics}
         assert keys.get("reliability") == 1
-        assert "secrets" not in keys
-        assert await community.public_technique_count(topic="secrets") == 0
+        assert "security" not in keys
+        assert await community.public_technique_count(topic="security") == 0
         assert await community.public_technique_count(topic="reliability") == 1
-        assert await community.list_public_techniques(topic="secrets") == []
+        assert await community.list_public_techniques(topic="security") == []
 
 
 async def test_enumeration_returns_none_not_error(tmp_path: Path) -> None:

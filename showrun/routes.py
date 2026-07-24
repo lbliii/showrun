@@ -249,6 +249,7 @@ class ShowrunRoutes:
             name="community.profile.update",
         )(self.update_profile_settings)
         self.app.route("/discover", name="community.discover")(self.discover)
+        self.app.route("/topics", name="community.topics")(self.topics_index)
         self.app.route("/topics/{key}", name="community.topic")(self.topic_page)
         self.app.route("/creators/{handle}", name="community.profile")(self.profile_page)
         self.app.route("/techniques/{slug}", name="community.technique")(self.technique_page)
@@ -935,6 +936,16 @@ class ShowrunRoutes:
             active_topic=topic,
         )
 
+    async def topics_index(self, request: Request) -> Page:
+        user = self.browser_user()
+        catalog = await self.community.list_topic_catalog()
+        return Page(
+            "topics_index.html",
+            "page_root",
+            user=user,
+            catalog=catalog,
+        )
+
     async def topic_page(self, key: str, request: Request) -> Page:
         user = self.browser_user()
         techniques = await self.community.list_public_techniques(topic=key)
@@ -1069,11 +1080,13 @@ class ShowrunRoutes:
         topics_value = ""
         if existing is not None:
             topics_value = await self.community.topics_csv(existing.id)
+        topics = await self.community.list_topics()
         return self._technique_form(
             lesson=lesson,
             public_release=public_release,
             card=existing,
             topics_value=topics_value,
+            topic_catalog=topics,
             error="",
         )
 
@@ -1084,6 +1097,7 @@ class ShowrunRoutes:
         public_release: ReleaseRecord | None,
         card: Any,
         topics_value: str,
+        topic_catalog: Any,
         error: str,
     ) -> Page:
         return Page(
@@ -1094,6 +1108,7 @@ class ShowrunRoutes:
             release_slug=public_release.slug if public_release else "",
             card=card,
             topics_value=topics_value,
+            topic_catalog=topic_catalog,
             error=error,
         )
 
@@ -1111,6 +1126,7 @@ class ShowrunRoutes:
         )
         if release is None or lesson is None:
             return Response("Release not found", status=404, content_type="text/plain")
+        topic_catalog = await self.community.list_topics()
 
         def _reject(message: str) -> Page:
             return self._technique_form(
@@ -1118,6 +1134,7 @@ class ShowrunRoutes:
                 public_release=release,
                 card=None,
                 topics_value=str(form.get("topics") or ""),
+                topic_catalog=topic_catalog,
                 error=message,
             )
 
