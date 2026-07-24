@@ -211,6 +211,20 @@ class RankedTechnique:
 
 
 @dataclass(frozen=True, slots=True)
+class DiscoverPage:
+    """One page of ranked discovery results with stable pagination flags."""
+
+    items: list[RankedTechnique]
+    page: int
+    page_size: int
+    has_next: bool
+
+    @property
+    def has_prev(self) -> bool:
+        return self.page > 1
+
+
+@dataclass(frozen=True, slots=True)
 class _PlayRow:
     release_id: str
     event_name: str
@@ -1048,6 +1062,29 @@ class CommunityStore:
                 overflow.append(entry)
         bounded = max(1, min(int(limit), 100))
         return (primary + overflow)[:bounded]
+
+    async def discover_page(
+        self,
+        *,
+        query: str = "",
+        topic: str = "",
+        page: int = 1,
+        page_size: int = 12,
+    ) -> DiscoverPage:
+        """A stable, deterministic page of the ranked discovery feed."""
+
+        page = max(1, int(page))
+        page_size = max(1, min(int(page_size), 50))
+        pool = await self.ranked_techniques(query=query, topic=topic, limit=100)
+        offset = (page - 1) * page_size
+        items = pool[offset : offset + page_size]
+        has_next = len(pool) > offset + page_size
+        return DiscoverPage(
+            items=items,
+            page=page,
+            page_size=page_size,
+            has_next=has_next,
+        )
 
     async def list_techniques_by_handle(
         self,

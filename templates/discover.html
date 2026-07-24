@@ -60,9 +60,9 @@
       {% if query %}<a class="quiet-button" href="/discover">Clear</a>{% endif %}
     </form>
 
-    {% if ranked %}
+    {% if page.items %}
     <div class="technique-grid">
-      {% for entry in ranked %}
+      {% for entry in page.items %}
       <article class="technique-card">
         <a class="technique-title" href="/techniques/{{ entry.card.slug }}"><strong>{{ entry.card.title }}</strong></a>
         <p class="technique-problem">{{ entry.card.problem }}</p>
@@ -74,6 +74,18 @@
         <p class="rank-why" title="{{ entry.explanation }}">{{ entry.explanation }}</p>
       </article>
       {% endfor %}
+    </div>
+    {% if page.has_prev or page.has_next %}
+    <nav class="pagination" aria-label="Pagination">
+      {% if prev_url %}<a class="quiet-button" href="{{ prev_url }}" rel="prev">← Previous</a>{% endif %}
+      <span>Page {{ page.page }}</span>
+      {% if next_url %}<a class="quiet-button" href="{{ next_url }}" rel="next">Next →</a>{% endif %}
+    </nav>
+    {% endif %}
+    {% elif query %}
+    <div class="empty-library">
+      <strong>No techniques match “{{ query }}”.</strong>
+      <p>Try a different term or clear the search.</p>
     </div>
     {% else %}
     <div class="empty-library">

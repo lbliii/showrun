@@ -9,6 +9,7 @@ import os
 from dataclasses import asdict, replace
 from math import isfinite
 from typing import Any
+from urllib.parse import urlencode
 
 from chirp.app import App
 from chirp.data import QueryError
@@ -47,6 +48,14 @@ from showrun.store import LessonRecord, ReleaseRecord, ShowrunStore, UserRecord
 
 def _redirect(path: str) -> Response:
     return Response("", status=303, headers=(("Location", path),))
+
+
+def _page_url(base: str, params: dict[str, str], page: int) -> str:
+    """Build a pagination URL preserving non-empty filters (properly encoded)."""
+
+    query = {key: value for key, value in params.items() if value}
+    query["page"] = str(page)
+    return f"{base}?{urlencode(query)}"
 
 
 def _json_response(payload: dict[str, Any], *, status: int = 200) -> Response:
@@ -918,22 +927,32 @@ class ShowrunRoutes:
         )
         return _redirect("/settings/profile?saved=1")
 
+    def _page_number(self, request: Request) -> int:
+        raw = str(request.query.get("page") or "1")
+        return int(raw) if raw.isdigit() and int(raw) > 0 else 1
+
     async def discover(self, request: Request) -> Page:
         user = self.browser_user()
         query = str(request.query.get("q") or "")[:100]
         topic = str(request.query.get("topic") or "")[:64]
-        ranked = await self.community.ranked_techniques(query=query, topic=topic)
+        page_num = self._page_number(request)
+        result = await self.community.discover_page(query=query, topic=topic, page=page_num)
         topics = await self.community.list_public_topics()
         total = await self.community.public_technique_count()
+        params = {"q": query, "topic": topic}
+        prev_url = _page_url("/discover", params, result.page - 1) if result.has_prev else ""
+        next_url = _page_url("/discover", params, result.page + 1) if result.has_next else ""
         return Page(
             "discover.html",
             "page_root",
             user=user,
-            ranked=ranked,
+            page=result,
             topics=topics,
             total=total,
             query=query,
             active_topic=topic,
+            prev_url=prev_url,
+            next_url=next_url,
         )
 
     async def topics_index(self, request: Request) -> Page:
@@ -948,15 +967,21 @@ class ShowrunRoutes:
 
     async def topic_page(self, key: str, request: Request) -> Page:
         user = self.browser_user()
-        techniques = await self.community.list_public_techniques(topic=key)
+        page_num = self._page_number(request)
+        result = await self.community.discover_page(topic=key, page=page_num)
         count = await self.community.public_technique_count(topic=key)
+        base = f"/topics/{key}"
+        prev_url = _page_url(base, {}, result.page - 1) if result.has_prev else ""
+        next_url = _page_url(base, {}, result.page + 1) if result.has_next else ""
         return Page(
             "topic.html",
             "page_root",
             user=user,
             topic_key=key,
-            techniques=techniques,
+            page=result,
             count=count,
+            prev_url=prev_url,
+            next_url=next_url,
         )
 
     async def profile_page(self, handle: str, request: Request) -> Page | Response:
