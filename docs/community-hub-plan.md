@@ -380,15 +380,21 @@ Exit criteria:
 
 ## GitHub program map
 
-The implementation backlog is organized under one program epic:
+The live execution index is
+[Epic #3: Community Hub — demonstrated agent craft with attribution](https://github.com/lbliii/showrun/issues/3).
+Its child epics are:
 
-1. **Community domain, publishing contract, and privacy boundary**
-2. **Creator profiles, technique pages, and discovery**
-3. **Questions, forks, reproductions, and attribution**
-4. **Community trust, moderation, and controlled access**
-5. **Capture breadth, seeded curriculum, and public beta**
+1. [#4 — Community domain, publishing contract, and privacy boundary](https://github.com/lbliii/showrun/issues/4)
+2. [#5 — Creator profiles, technique pages, and discovery](https://github.com/lbliii/showrun/issues/5)
+3. [#6 — Questions, forks, reproductions, and attribution](https://github.com/lbliii/showrun/issues/6)
+4. [#7 — Community trust, moderation, and controlled access](https://github.com/lbliii/showrun/issues/7)
+5. [#8 — Capture breadth, seeded curriculum, and public beta](https://github.com/lbliii/showrun/issues/8)
 
-Each epic has bounded child issues with explicit acceptance criteria and a
-milestone. The GitHub epic remains the live execution index; this document owns
-the stable product and architecture decisions.
+The 20 implementation children have explicit outcomes, scope, non-goals,
+acceptance criteria, dependencies, labels, and one of three milestones:
+[Foundation](https://github.com/lbliii/showrun/milestone/2),
+[Private Alpha](https://github.com/lbliii/showrun/milestone/1), or
+[Public Beta](https://github.com/lbliii/showrun/milestone/3).
 
+GitHub owns the live execution state; this document owns the stable product and
+architecture decisions.
