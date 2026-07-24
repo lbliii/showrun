@@ -1,0 +1,64 @@
+{% extends "layout.html" %}
+
+{% block title %}Profile settings · Showrun{% end %}
+
+{% block head_extra %}
+<link rel="stylesheet" href="/static/library.css">
+<link rel="stylesheet" href="/static/community.css">
+<link rel="stylesheet" href="/static/forms.css">
+{% end %}
+
+{% block content %}
+{% block page_root %}
+<div class="library-shell">
+  <header class="library-nav">
+    <a class="brand" href="/">
+      <span class="brand-mark">SR</span>
+      <span>Showrun</span>
+    </a>
+    <nav>
+      <a class="quiet-button" href="/discover">Discover</a>
+      <a class="quiet-button" href="/">Your library</a>
+      <a class="quiet-button" href="/creators/{{ profile.handle }}">View public profile</a>
+    </nav>
+  </header>
+
+  <section class="technique-detail">
+    <p class="eyebrow">Creator profile</p>
+    <h1>Profile settings</h1>
+    <p class="technique-meta">Public at <a href="/creators/{{ profile.handle }}">@{{ profile.handle }}</a></p>
+
+    {% if saved %}<div class="form-success">Profile saved.</div>{% endif %}
+    {% if error %}<div class="form-error">{{ error }}</div>{% endif %}
+
+    <form class="stacked-form" action="/settings/profile" method="post">
+      {{ csrf_field() }}
+      <label>
+        <span>Handle <small>(your public URL: /creators/&lt;handle&gt;)</small></span>
+        <input type="text" name="handle" minlength="3" maxlength="32" required
+          pattern="[a-z0-9]([a-z0-9-]*[a-z0-9])?"
+          value="{{ profile.handle }}">
+      </label>
+      <label>
+        <span>Display name</span>
+        <input type="text" name="display_name" maxlength="80" required
+          value="{{ profile.display_name }}">
+      </label>
+      <label>
+        <span>Bio <small>(optional, up to 500 characters)</small></span>
+        <textarea name="bio" rows="4" maxlength="500"
+          placeholder="What agent craft do you demonstrate?">{{ profile.bio }}</textarea>
+      </label>
+      <label>
+        <span>Profile visibility</span>
+        <select name="visibility">
+          <option value="public"{% if profile.visibility == "public" %} selected{% endif %}>Public — discoverable</option>
+          <option value="private"{% if profile.visibility == "private" %} selected{% endif %}>Private — hidden from everyone but you</option>
+        </select>
+      </label>
+      <button class="library-button" type="submit">Save profile</button>
+    </form>
+  </section>
+</div>
+{% end %}
+{% end %}

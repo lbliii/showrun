@@ -34,8 +34,13 @@ from showrun.auth import (
 )
 from showrun.community import (
     CommunityStore,
+    ProfileError,
     TechniqueCardError,
+    validate_bio,
     validate_card,
+    validate_display_name,
+    validate_handle,
+    validate_visibility,
 )
 from showrun.store import LessonRecord, ReleaseRecord, ShowrunStore, UserRecord
 
@@ -235,6 +240,14 @@ class ShowrunRoutes:
             methods=["POST"],
             name="releases.unpublish",
         )(self.unpublish_release)
+        self.app.route("/settings/profile", name="community.profile.settings")(
+            self.profile_settings_page
+        )
+        self.app.route(
+            "/settings/profile",
+            methods=["POST"],
+            name="community.profile.update",
+        )(self.update_profile_settings)
         self.app.route("/discover", name="community.discover")(self.discover)
         self.app.route("/topics/{key}", name="community.topic")(self.topic_page)
         self.app.route("/creators/{handle}", name="community.profile")(self.profile_page)
@@ -833,6 +846,77 @@ class ShowrunRoutes:
 
     # -- Community Hub ------------------------------------------------------
 
+    async def _ensure_profile(self, user: UserRecord):
+        return await self.community.ensure_profile(
+            user_id=user.id,
+            workspace_id=user.workspace_id,
+            display_name=user.name,
+            email=user.email,
+        )
+
+    async def profile_settings_page(self, request: Request) -> Page | Response:
+        user, denied = self.require_user()
+        if denied or user is None:
+            return denied or _redirect("/login")
+        profile = await self._ensure_profile(user)
+        return Page(
+            "profile_settings.html",
+            "page_root",
+            user=user,
+            profile=profile,
+            error="",
+            saved=str(request.query.get("saved") or "") == "1",
+        )
+
+    async def update_profile_settings(self, request: Request) -> Page | Response:
+        user, denied = self.require_user()
+        if denied or user is None:
+            return denied or _redirect("/login")
+        profile = await self._ensure_profile(user)
+        form = await request.form()
+        raw_name = str(form.get("display_name") or "")
+        raw_bio = str(form.get("bio") or "")
+        raw_visibility = str(form.get("visibility") or "public")
+        raw_handle = str(form.get("handle") or "")
+
+        def _reject(message: str) -> Page:
+            return Page(
+                "profile_settings.html",
+                "page_root",
+                user=user,
+                profile=replace(
+                    profile,
+                    handle=raw_handle.strip().lower() or profile.handle,
+                    display_name=raw_name.strip() or profile.display_name,
+                    bio=raw_bio.strip(),
+                    visibility=raw_visibility
+                    if raw_visibility in {"public", "private"}
+                    else profile.visibility,
+                ),
+                error=message,
+                saved=False,
+            )
+
+        try:
+            display_name = validate_display_name(raw_name)
+            bio = validate_bio(raw_bio)
+            visibility = validate_visibility(raw_visibility)
+            handle = validate_handle(raw_handle)
+        except ProfileError as exc:
+            return _reject(str(exc))
+        try:
+            if handle != profile.handle:
+                await self.community.change_handle(user_id=user.id, new_handle=handle)
+        except ProfileError as exc:
+            return _reject(str(exc))
+        await self.community.update_profile(
+            user_id=user.id,
+            display_name=display_name,
+            bio=bio,
+            visibility=visibility,
+        )
+        return _redirect("/settings/profile?saved=1")
+
     async def discover(self, request: Request) -> Page:
         user = self.browser_user()
         query = str(request.query.get("q") or "")[:100]
@@ -867,22 +951,33 @@ class ShowrunRoutes:
     async def profile_page(self, handle: str, request: Request) -> Page | Response:
         user = self.browser_user()
         viewer_workspace = user.workspace_id if user else None
+        current = await self.community.resolve_handle(handle)
+        if current is None:
+            return Response("Creator not found", status=404, content_type="text/plain")
         profile = await self.community.get_public_profile(
-            handle,
+            current,
             viewer_workspace_id=viewer_workspace,
         )
+        # Gate visibility before redirecting so a private profile 404s whether
+        # reached by its current handle or a past alias (no existence leak).
         if profile is None:
             return Response("Creator not found", status=404, content_type="text/plain")
+        if current != handle:
+            return Response(
+                "", status=301, headers=(("Location", f"/creators/{current}"),)
+            )
         techniques = await self.community.list_techniques_by_handle(
-            handle,
+            current,
             viewer_workspace_id=viewer_workspace,
         )
+        signals = await self.community.craft_signals(current)
         return Page(
             "profile.html",
             "page_root",
             user=user,
             profile=profile,
             techniques=techniques,
+            signals=signals,
             is_owner=bool(user and user.workspace_id == profile.workspace_id),
         )
 
@@ -901,6 +996,14 @@ class ShowrunRoutes:
             viewer_workspace_id=viewer_workspace,
         )
         is_owner = bool(user and user.workspace_id == card.workspace_id)
+        # Reuse the deployed player via its embed route (no duplication) and
+        # surface bounded, public-safe evidence from the same immutable release.
+        release = await self.store.get_release(card.release_slug)
+        evidence_events = (
+            [event for event in release.artifact.events if event.activity][:8]
+            if release is not None
+            else []
+        )
         if not is_owner:
             await self.store.record_usage(
                 "technique.viewed",
@@ -915,6 +1018,8 @@ class ShowrunRoutes:
             card=card,
             topics=topics,
             versions=versions,
+            evidence_events=evidence_events,
+            can_embed=release is not None,
             is_owner=is_owner,
         )
 

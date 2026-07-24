@@ -102,6 +102,23 @@ class TopicRecord:
 
 
 @dataclass(frozen=True, slots=True)
+class CraftSignals:
+    """Public contribution signals for a creator, derived from source records.
+
+    No opaque authority score: each signal is itemized and reproducible from the
+    underlying eligible records. Reproductions/forks/citations are first-class
+    but remain 0 until those features land (#18/#19), never fabricated.
+    """
+
+    published_techniques: int
+    topics: tuple[TopicRecord, ...]
+    latest_published_at: str | None
+    reproductions: int = 0
+    forks: int = 0
+    citations: int = 0
+
+
+@dataclass(frozen=True, slots=True)
 class TechniqueRecord:
     id: str
     lesson_id: str
@@ -189,6 +206,63 @@ class TechniqueCardInput:
 
 class TechniqueCardError(ValueError):
     """Raised when technique-card teaching metadata fails validation."""
+
+
+class ProfileError(ValueError):
+    """Raised when profile fields fail validation."""
+
+
+def validate_display_name(value: str) -> str:
+    name = " ".join(str(value or "").split())
+    if not name:
+        raise ProfileError("Enter a display name.")
+    if len(name) > 80:
+        raise ProfileError("Display name must be 80 characters or fewer.")
+    return name
+
+
+def validate_bio(value: str) -> str:
+    bio = " ".join(str(value or "").split())
+    if len(bio) > 500:
+        raise ProfileError("Keep your bio to 500 characters or fewer.")
+    return bio
+
+
+def validate_visibility(value: str) -> str:
+    if value not in {"public", "private"}:
+        raise ProfileError("Profile visibility must be public or private.")
+    return value
+
+
+# Handles that would collide with routes or read as impersonation. Kept in one
+# place so the guard and any future admin tooling share the list.
+RESERVED_HANDLES = frozenset(
+    {
+        "about", "admin", "api", "creator", "creators", "discover", "embed",
+        "health", "help", "imports", "lessons", "login", "logout", "me", "new",
+        "oembed", "profile", "profiles", "ready", "releases", "settings",
+        "signup", "static", "support", "technique", "techniques", "topic",
+        "topics", "watch",
+    }
+)
+
+
+def validate_handle(value: str) -> str:
+    """Normalize and validate a public handle. Raises ProfileError on failure."""
+
+    handle = str(value or "").strip().lower()
+    if not handle:
+        raise ProfileError("Enter a handle.")
+    if not re.fullmatch(r"[a-z0-9](?:[a-z0-9-]*[a-z0-9])?", handle):
+        raise ProfileError(
+            "Handles use lowercase letters, numbers, and hyphens, and cannot "
+            "start or end with a hyphen."
+        )
+    if len(handle) < 3 or len(handle) > 32:
+        raise ProfileError("Handles must be 3 to 32 characters.")
+    if handle in RESERVED_HANDLES:
+        raise ProfileError("That handle is reserved. Choose another.")
+    return handle
 
 
 def _now() -> str:
@@ -315,23 +389,90 @@ class CommunityStore:
             now,
             now,
         )
+        await self._register_handle(profile_id, handle)
         profile = await self.get_profile_by_user(user_id)
         if profile is None:
             raise RuntimeError("Profile was not persisted")
         return profile
 
+    async def _register_handle(self, profile_id: str, handle: str) -> bool:
+        """Record a handle in the global registry. Returns False if taken."""
+
+        inserted = await self.db.execute(
+            "INSERT INTO profile_handles (handle, profile_id, created_at) "
+            "VALUES (?, ?, ?) ON CONFLICT(handle) DO NOTHING",
+            handle,
+            profile_id,
+            _now(),
+        )
+        return bool(inserted)
+
+    async def _handle_owner(self, handle: str) -> str | None:
+        """profile_id that owns a handle across current handles and past aliases."""
+
+        return await self.db.fetch_val(
+            "SELECT profile_id FROM profile_handles WHERE handle = ? "
+            "UNION ALL SELECT id FROM profiles WHERE handle = ? LIMIT 1",
+            handle,
+            handle,
+        )
+
     async def _unique_handle(self, base: str) -> str:
         candidate = base or "creator"
         suffix = 0
         while True:
-            taken = await self.db.fetch_val(
-                "SELECT 1 FROM profiles WHERE handle = ?",
-                candidate,
-            )
-            if not taken:
+            if await self._handle_owner(candidate) is None:
                 return candidate
             suffix += 1
             candidate = f"{base}-{suffix}"[:40]
+
+    async def change_handle(self, *, user_id: str, new_handle: str) -> ProfileRecord:
+        """Claim a new handle, keeping the old one as a permanent redirect alias."""
+
+        handle = validate_handle(new_handle)
+        async with self.db.transaction():
+            profile = await self.get_profile_by_user(user_id)
+            if profile is None:
+                raise LookupError("Profile not found")
+            if handle == profile.handle:
+                return profile
+            owner = await self._handle_owner(handle)
+            if owner is not None and owner != profile.id:
+                raise ProfileError("That handle is taken. Choose another.")
+            # Registering is atomic; if it lost a race to another profile the
+            # handle is now owned by someone else and must be rejected.
+            registered = await self._register_handle(profile.id, handle)
+            if not registered and await self._handle_owner(handle) != profile.id:
+                raise ProfileError("That handle is taken. Choose another.")
+            await self.db.execute(
+                "UPDATE profiles SET handle = ?, updated_at = ? WHERE id = ?",
+                handle,
+                _now(),
+                profile.id,
+            )
+        updated = await self.get_profile_by_user(user_id)
+        if updated is None:
+            raise RuntimeError("Handle change was not persisted")
+        return updated
+
+    async def resolve_handle(self, handle: str) -> str | None:
+        """Return the current handle for a handle or one of its past aliases."""
+
+        normalized = str(handle or "").strip().lower()
+        if not normalized:
+            return None
+        current = await self.db.fetch_val(
+            "SELECT handle FROM profiles WHERE handle = ?",
+            normalized,
+        )
+        if current:
+            return str(current)
+        aliased = await self.db.fetch_val(
+            "SELECT p.handle FROM profile_handles ph "
+            "JOIN profiles p ON p.id = ph.profile_id WHERE ph.handle = ?",
+            normalized,
+        )
+        return str(aliased) if aliased else None
 
     async def get_profile_by_user(self, user_id: str) -> ProfileRecord | None:
         return await self.db.fetch_one(
@@ -372,6 +513,32 @@ class CommunityStore:
             _now(),
             user_id,
         )
+
+    async def update_profile(
+        self,
+        *,
+        user_id: str,
+        display_name: str,
+        bio: str,
+        visibility: str,
+    ) -> ProfileRecord:
+        """Update the creator's editable profile fields. Validated by the caller."""
+
+        changed = await self.db.execute(
+            "UPDATE profiles SET display_name = ?, bio = ?, visibility = ?, "
+            "updated_at = ? WHERE user_id = ?",
+            display_name,
+            bio,
+            visibility,
+            _now(),
+            user_id,
+        )
+        if not changed:
+            raise LookupError("Profile not found")
+        profile = await self.get_profile_by_user(user_id)
+        if profile is None:
+            raise RuntimeError("Profile update was not persisted")
+        return profile
 
     # -- Topics -------------------------------------------------------------
 
@@ -569,6 +736,7 @@ class CommunityStore:
         profile = await self.get_profile_by_user(user_id)
         if profile is None:
             raise RuntimeError("Profile was not persisted")
+        await self._register_handle(profile.id, profile.handle)
         return profile
 
     async def _ensure_technique_locked(
@@ -785,6 +953,40 @@ class CommunityStore:
             f"WHERE p.handle = ? AND {public_eligibility_sql(discoverable=True)} "
             "ORDER BY tv.created_at DESC, t.id ASC",
             handle,
+        )
+
+    async def craft_signals(self, handle: str) -> CraftSignals:
+        """Reproducible public contribution signals for a creator profile.
+
+        Always eligibility-respecting (discoverable content only), so the
+        numbers reflect public contribution and match what any viewer can see.
+        """
+
+        eligible = public_eligibility_sql(discoverable=True)
+        published = await self.db.fetch_val(
+            f"SELECT COUNT(DISTINCT t.id) {_PUBLIC_FROM} "
+            f"WHERE p.handle = ? AND {eligible}",
+            handle,
+        )
+        latest = await self.db.fetch_val(
+            f"SELECT MAX(tv.created_at) {_PUBLIC_FROM} "
+            f"WHERE p.handle = ? AND {eligible}",
+            handle,
+        )
+        topics = await self.db.fetch(
+            TopicRecord,
+            "SELECT DISTINCT tp.id, tp.key, tp.label, tp.description, tp.created_at "
+            f"{_PUBLIC_FROM} "
+            "JOIN technique_topics tt ON tt.technique_id = t.id "
+            "JOIN topics tp ON tp.id = tt.topic_id "
+            f"WHERE p.handle = ? AND {eligible} "
+            "ORDER BY tp.key",
+            handle,
+        )
+        return CraftSignals(
+            published_techniques=int(published or 0),
+            topics=tuple(topics),
+            latest_published_at=str(latest) if latest else None,
         )
 
     async def public_technique_count(self, *, topic: str = "") -> int:

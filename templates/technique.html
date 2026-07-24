@@ -1,4 +1,5 @@
 {% extends "layout.html" %}
+{% from "components.html" import evidence_details %}
 
 {% block title %}{{ card.title }} · Showrun{% end %}
 
@@ -6,6 +7,7 @@
 <meta name="description" content="{{ card.summary }}">
 <link rel="stylesheet" href="/static/library.css">
 <link rel="stylesheet" href="/static/community.css">
+<link rel="stylesheet" href="/static/evidence.css">
 {% end %}
 
 {% block content %}
@@ -39,10 +41,19 @@
     </div>
     {% endif %}
 
-    <a class="library-button" href="/watch/{{ card.release_slug }}">Watch the run →</a>
-    {% if is_owner %}
-    <a class="quiet-button" href="/lessons/{{ card.lesson_id }}/technique">Edit technique</a>
+    {% if can_embed %}
+    <div class="technique-player">
+      <iframe src="/embed/{{ card.release_slug }}"
+        title="{{ card.title }}" loading="lazy"
+        style="width:100%;aspect-ratio:16/9;border:0" allowfullscreen></iframe>
+    </div>
     {% endif %}
+    <div class="technique-actions">
+      <a class="library-button" href="/watch/{{ card.release_slug }}">Open full watch page →</a>
+      {% if is_owner %}
+      <a class="quiet-button" href="/lessons/{{ card.lesson_id }}/technique">Edit technique</a>
+      {% endif %}
+    </div>
 
     <dl class="technique-fields">
       <dt>Problem</dt><dd>{{ card.problem }}</dd>
@@ -52,6 +63,25 @@
       {% if card.limitations %}<dt>Limitations</dt><dd>{{ card.limitations }}</dd>{% endif %}
       <dt>Summary</dt><dd>{{ card.summary }}</dd>
     </dl>
+
+    {% if evidence_events %}
+    <section class="technique-evidence">
+      <h2>Evidence from the run</h2>
+      <p class="signal-note">Bounded, public-safe evidence captured in the immutable release. Expand each step to inspect it.</p>
+      <ul class="evidence-list">
+        {% for event in evidence_events %}
+        <li>
+          <div class="evidence-heading">
+            <strong>{{ event.label }}</strong>
+            {% if event.activity %}<span class="activity-label">{{ event.activity }}</span>{% endif %}
+            <span>{{ event.at | int }}s</span>
+          </div>
+          {{ evidence_details(event) }}
+        </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
 
     {% if versions %}
     <section class="technique-versions">
