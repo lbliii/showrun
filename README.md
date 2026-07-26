@@ -8,6 +8,7 @@
 
 [Open Showrun](https://showrun-production.up.railway.app) ·
 [Product strategy](./docs/product-strategy.md) ·
+[Community Hub plan](./docs/community-hub-plan.md) ·
 [Roadmap](./docs/roadmap.md)
 
 Agent runs contain the most useful parts of a demo: the prompt, the decisions,

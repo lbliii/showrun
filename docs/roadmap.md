@@ -29,6 +29,21 @@ enterprise federation after real demand.
 - API tokens, `showrun` / `sr` CLI, and stdio MCP
 - SQLite locally and PostgreSQL on Railway
 
+## Community Hub program
+
+The next product layer is a social knowledge network for agent craft: public
+techniques backed by real Showrun releases, creator attribution, demonstrated
+answers, permanent fork lineage, evidence-backed reproductions, and discovery.
+
+The detailed product, domain, trust, architecture, delivery, and measurement
+plan lives in the [Community Hub plan](./community-hub-plan.md).
+
+The Community Hub does not replace the trust-and-sharing roadmap below. Its
+public foundation can ship on the existing account and release model, while
+private sharing and passkeys remain explicit security leaves. Organizations and
+SSO are later expansion paths rather than blockers for proving the community
+loop.
+
 ## Wave 1: trust and controlled sharing
 
 **Goal:** let an individual build a durable library and decide exactly who can
@@ -133,4 +148,3 @@ Wave 1 is successful when:
 - at least five target users create a second show
 - multiple users demonstrate willingness to pay for privacy, durability, or a
   lasting library
-
